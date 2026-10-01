@@ -1,0 +1,21 @@
+{
+  "name": "session-context-debugger",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Local, source-grounded inspection of Codex and Claude Code sessions",
+  "engines": { "node": ">=22.12.0" },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.server.json --noEmit && tsc -p tsconfig.ui.json",
+    "build": "tsc -p tsconfig.server.json && vite build",
+    "start": "node dist/server/server/index.js"
+  },
+  "dependencies": { "react": "19.3.0", "react-dom": "19.3.0" },
+  "devDependencies": {
+    "@types/node": "22.20.4",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "typescript": "7.0.2",
+    "vite": "8.3.2"
+  }
+}
