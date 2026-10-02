@@ -132,6 +132,7 @@ export type ApiResult<T> = { ok: true; data: T } | { ok: false; error: { code: s
 export type EventKind = 'message' | 'tool-call' | 'tool-result' | 'reasoning' | 'usage' | 'attachment' | 'lifecycle' | 'metadata' | 'unknown';
 export interface TimelineEvent {
   id: string;
+  position: number;
   ref: SourceRef;
   kind: EventKind;
   label: string;
@@ -147,14 +148,32 @@ export interface TimelineEvent {
   toolId?: string;
   pairStatus?: 'paired' | 'orphan' | 'ambiguous' | 'unassigned';
   related?: SourceRef[];
+  relatedPositions?: number[];
 }
 export interface TimelinePage {
   events: TimelineEvent[];
   after?: number;
+  before?: number;
   total: number;
   omitted: number;
   complete: boolean;
   maxEvents: number;
+}
+export type TimelineCategory = EventKind | 'user' | 'assistant' | 'instruction' | 'snapshot';
+export interface TimelineBin {
+  start: number;
+  end: number;
+  firstLine: number;
+  lastLine: number;
+  counts: Partial<Record<TimelineCategory, number>>;
+  matching: number;
+  firstMatch?: number;
+}
+export interface TimelineMap {
+  bins: TimelineBin[];
+  total: number;
+  matching: number;
+  omitted: number;
 }
 
 export type SourceMode = 't3' | 'claude' | 'codex';

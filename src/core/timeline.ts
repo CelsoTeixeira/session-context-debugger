@@ -1,9 +1,12 @@
 import { array, identifier, object } from './json.js';
+import { timelineCategory } from './timeline-category.js';
 import type { Obj } from './json.js';
-import type { EventKind, RecordMeta, SourceFile, TimelineEvent, TimelinePage } from './types.js';
+import type { EventKind, RecordMeta, SourceFile, TimelineEvent, TimelineMap, TimelinePage } from './types.js';
 
 const MAX_EVENTS = 40_000;
 const PREVIEW = 256;
+const matches = (event: TimelineEvent, filter: string): boolean => filter === 'all'
+  || (filter === 'tools' ? event.kind === 'tool-call' || event.kind === 'tool-result' : event.kind === filter);
 
 // Only small metadata and previews survive the scan. Bodies stay behind refs.
 export class Timeline {
@@ -22,7 +25,7 @@ export class Timeline {
       if (this.events.length >= MAX_EVENTS) { this.omitted++; return; }
       const text = typeof value === 'string' ? value : '';
       const event: TimelineEvent = {
-        id: meta.ref.id + ':event:' + (this.events.length - start), ref: { ...meta.ref, pointer },
+        id: meta.ref.id + ':event:' + (this.events.length - start), position: this.events.length, ref: { ...meta.ref, pointer },
         kind, label, actorId, timestamp, origin: 'unknown', representation: 'unknown',
         detail: 'Recorded content; request delivery and active inclusion are unknown.',
         preview: text.slice(0, PREVIEW), previewLimited: text.length > PREVIEW, ...options,
@@ -144,16 +147,38 @@ export class Timeline {
     let position = after;
     for (; position < this.events.length && events.length < 50; position++) {
       const event = this.events[position]!;
-      if (filter !== 'all' && (filter === 'tools' ? event.kind !== 'tool-call' && event.kind !== 'tool-result' : event.kind !== filter)) continue;
+      if (!matches(event, filter)) continue;
       if (event.kind !== 'tool-call' && event.kind !== 'tool-result') { events.push(event); continue; }
       const group = event.toolId ? this.tools.get(JSON.stringify([event.actorId, event.toolId])) ?? [] : [];
       const calls = group.filter(item => item.kind === 'tool-call');
       const results = group.filter(item => item.kind === 'tool-result');
       const opposite = event.kind === 'tool-call' ? results : calls;
-      events.push({ ...event, pairStatus: !event.toolId ? 'unassigned' : !opposite.length ? 'orphan' : calls.length === 1 && results.length === 1 ? 'paired' : 'ambiguous', related: opposite.slice(0, 20).map(item => item.ref),
+      events.push({ ...event, pairStatus: !event.toolId ? 'unassigned' : !opposite.length ? 'orphan' : calls.length === 1 && results.length === 1 ? 'paired' : 'ambiguous', related: opposite.slice(0, 20).map(item => item.ref), relatedPositions: opposite.slice(0, 20).map(item => item.position),
         detail: event.detail + ' Pairing uses only recorded tool ID within this actor. At most 20 opposite references are displayed.' });
     }
-    return { events, after: position < this.events.length ? position : undefined, total: this.events.length, omitted: this.omitted,
+    let before: number | undefined;
+    for (let i = after - 1, found = 0; i >= 0 && found < 50; i--) {
+      if (matches(this.events[i]!, filter)) { before = i; found++; }
+    }
+    return { events, before, after: position < this.events.length ? position : undefined, total: this.events.length, omitted: this.omitted,
       complete: scanComplete && !this.omitted, maxEvents: MAX_EVENTS };
+  }
+  map(filter: string): TimelineMap {
+    const bins: TimelineMap['bins'] = [];
+    const width = Math.max(1, Math.ceil(this.events.length / 120));
+    let matching = 0;
+    for (let start = 0; start < this.events.length; start += width) {
+      const end = Math.min(this.events.length, start + width);
+      const bin: TimelineMap['bins'][number] = { start, end, firstLine: this.events[start]!.ref.line,
+        lastLine: this.events[end - 1]!.ref.line, counts: {}, matching: 0 };
+      for (let i = start; i < end; i++) {
+        const event = this.events[i]!;
+        const category = timelineCategory(event);
+        bin.counts[category] = (bin.counts[category] ?? 0) + 1;
+        if (matches(event, filter)) { bin.matching++; bin.firstMatch ??= i; matching++; }
+      }
+      bins.push(bin);
+    }
+    return { bins, total: this.events.length, matching, omitted: this.omitted };
   }
 }

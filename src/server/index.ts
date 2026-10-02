@@ -96,6 +96,9 @@ export async function createApp(roots?: string[]) {
           const filter = url.searchParams.get('kind') ?? 'all';
           if (!Number.isSafeInteger(after) || after < 0 || after > session.timeline.events.length) throw new DataError('invalid-cursor', 'Invalid timeline cursor.');
           if (!['all', 'tools', 'message', 'reasoning', 'usage', 'attachment', 'lifecycle', 'metadata', 'unknown'].includes(filter)) throw new DataError('invalid-request', 'Invalid event kind.');
+          const view = url.searchParams.get('view');
+          if (view !== null && view !== 'map') throw new DataError('invalid-request', 'Invalid timeline view.');
+          if (view === 'map') return send(res, 200, { ok: true, data: session.timeline.map(filter) });
           const coverage = session.coverage;
           const complete = coverage.complete && session.records.size === coverage.completeLines
             && !coverage.pendingBytes && !coverage.dispositions.limited && !coverage.dispositions.malformed && !coverage.dispositions.unknown;
