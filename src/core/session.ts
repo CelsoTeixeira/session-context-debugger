@@ -5,6 +5,7 @@ import { adaptCodex } from '../adapters/codex/index.js';
 import { adaptClaude } from '../adapters/claude/index.js';
 import { identifier, object } from './json.js';
 import { Normalizer } from './normalize.js';
+import { Timeline } from './timeline.js';
 import { MAX_ITEMS, MAX_RECORDS, PARSE_BYTES, PREVIEW_UNITS, scan } from './scanner.js';
 import { abortIfNeeded, DataError, Sources } from './source.js';
 import type { CoverageLedger, Overview, RecordMeta, RecordView, SourceFile, SourceRef } from './types.js';
@@ -24,6 +25,7 @@ export class Session {
   readonly controller = new AbortController();
   readonly records = new Map<string, RecordMeta>();
   readonly normalizer: Normalizer;
+  readonly timeline: Timeline;
   readonly coverage: CoverageLedger;
   state: Overview['state'] = 'indexing';
   error?: string;
@@ -31,6 +33,7 @@ export class Session {
   linkedIdentity?: SourceRef;
   constructor(readonly source: SourceFile, readonly sources: Sources) {
     this.normalizer = new Normalizer(source);
+    this.timeline = new Timeline(source);
     this.coverage = ledger(source.size);
   }
   async index(): Promise<void> {
@@ -40,6 +43,7 @@ export class Session {
           throw new DataError('stale-reference', 'Linked provider identity changed during indexing. Reselect the T3 thread.', 409);
         }
         const meta: RecordMeta = { ref, outerType: '(unparsed)', disposition: 'unknown' };
+        let decoded: Record<string, unknown> | undefined;
         if (this.records.size < MAX_RECORDS) this.records.set(ref.id, meta);
         else this.normalizer.warnings.add('Record index limit reached; remaining physical lines are counted but range navigation is incomplete.');
         if (pending) {
@@ -53,6 +57,7 @@ export class Session {
             const value: unknown = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes));
             if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Expected a JSON object.');
             const record = object(value);
+            decoded = record;
             const payload = object(record.payload);
             meta.outerType = identifier(record.type) ?? '(missing or over-limit type)';
             meta.payloadType = identifier(payload.type);
@@ -68,6 +73,7 @@ export class Session {
             meta.reason = error instanceof Error ? error.message.slice(0, 200) : 'Unable to decode record.';
           }
         }
+        if (this.records.has(ref.id)) this.timeline.capture(decoded, meta);
         count(this.coverage.dispositions, meta.disposition);
         if (!pending) this.coverage.completeLines++;
         count(this.coverage.outerTypes, meta.outerType);
@@ -102,6 +108,7 @@ export class Session {
     if (this.coverage.dispositions.limited) warnings.push('Oversized records are hash-indexed, with incomplete normalization.');
     if (this.coverage.pendingBytes) warnings.push('An unterminated trailing region is pending, even if its JSON might be parseable.');
     if (this.normalizer.limitedItems) warnings.push('Evidence-item limit reached; body normalization is incomplete.');
+    if (this.timeline.omitted) warnings.push('Timeline event limit reached; additional records remain in source coverage.');
     if (items.filter(item => item.kind !== 'prompt' && item.representation !== 'diagnostic-snapshot'
       && item.ref.line <= (firstCall?.firstLine ?? Number.MAX_SAFE_INTEGER)).length > 200) {
       warnings.push('Beginning shows at most 200 startup resources; additional captures remain in raw ledger records.');
@@ -122,7 +129,7 @@ export class Session {
     if (!Number.isSafeInteger(offset) || offset < 0 || offset > record.ref.byteLength && !pointer) {
       throw new DataError('invalid-range', 'Invalid record range.');
     }
-    if (pointer && !(this.linkedIdentity?.id === refId && this.linkedIdentity.pointer === pointer) && !this.normalizer.items.some(item => item.ref.id === refId && item.ref.pointer === pointer)
+    if (pointer && !this.timeline.allows(refId, pointer) && !(this.linkedIdentity?.id === refId && this.linkedIdentity.pointer === pointer) && !this.normalizer.items.some(item => item.ref.id === refId && item.ref.pointer === pointer)
       && ![...this.normalizer.calls.values()].some(call => call.variants.some(variant => variant.refs.some(ref => ref.id === refId && ref.pointer === pointer)))) {
       throw new DataError('invalid-pointer', 'Select a recorded evidence field.');
     }

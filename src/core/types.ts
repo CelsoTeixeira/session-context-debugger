@@ -129,6 +129,34 @@ export interface RecordView {
 }
 export type ApiResult<T> = { ok: true; data: T } | { ok: false; error: { code: string; message: string } };
 
+export type EventKind = 'message' | 'tool-call' | 'tool-result' | 'reasoning' | 'usage' | 'attachment' | 'lifecycle' | 'metadata' | 'unknown';
+export interface TimelineEvent {
+  id: string;
+  ref: SourceRef;
+  kind: EventKind;
+  label: string;
+  actorId: string;
+  role?: string;
+  timestamp?: string;
+  recordedId?: string;
+  origin: Origin;
+  representation: Representation | 'mirror';
+  detail: string;
+  preview: string;
+  previewLimited: boolean;
+  toolId?: string;
+  pairStatus?: 'paired' | 'orphan' | 'ambiguous' | 'unassigned';
+  related?: SourceRef[];
+}
+export interface TimelinePage {
+  events: TimelineEvent[];
+  after?: number;
+  total: number;
+  omitted: number;
+  complete: boolean;
+  maxEvents: number;
+}
+
 export type SourceMode = 't3' | 'claude' | 'codex';
 export interface T3Thread {
   id: string;

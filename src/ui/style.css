@@ -67,6 +67,9 @@ textarea { display: block; width: 100%; resize: vertical; border: 1px solid #d2d
 .usage-footnote button { font-size: 11px; flex-shrink: 0; }
 .variants { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
 .resource-panel { margin-bottom: 28px; }
+.timeline-event { border-bottom: 1px solid #e0e4d9; padding: 18px 2px; }
+.timeline-event .panel-heading { margin-bottom: 8px; }
+.timeline-preview { white-space: pre-wrap; overflow-wrap: anywhere; margin: 12px 0; }
 .resource-panel .panel-heading { margin-bottom: 7px; }
 .evidence-row { width: 100%; display: flex; align-items: flex-start; justify-content: space-between; text-align: left; gap: 20px; background: transparent; border: 0; border-bottom: 1px solid #e0e4d9; border-radius: 0; padding: 15px 2px; }
 .evidence-main { display: flex; flex-direction: column; gap: 4px; min-width: 0; }

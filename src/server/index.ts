@@ -86,11 +86,21 @@ export async function createApp(roots?: string[]) {
           const session = await sessions.open(path, controller.signal);
           return send(res, 202, { ok: true, data: { id: session.id } });
         }
-        const match = /^\/api\/sessions\/([0-9a-f-]+)\/(overview|ledger|cancel|records(?:\/r\d+)?)$/.exec(url.pathname);
+        const match = /^\/api\/sessions\/([0-9a-f-]+)\/(overview|events|ledger|cancel|records(?:\/r\d+)?)$/.exec(url.pathname);
         if (!match || !uuid.test(match[1] ?? '')) throw new DataError('not-found', 'API route unavailable.', 404);
         const session = sessions.get(match[1]!);
         const route = match[2]!;
         if (route === 'overview' && req.method === 'GET') return send(res, 200, { ok: true, data: session.overview() });
+        if (route === 'events' && req.method === 'GET') {
+          const after = Number(url.searchParams.get('after') ?? 0);
+          const filter = url.searchParams.get('kind') ?? 'all';
+          if (!Number.isSafeInteger(after) || after < 0 || after > session.timeline.events.length) throw new DataError('invalid-cursor', 'Invalid timeline cursor.');
+          if (!['all', 'tools', 'message', 'reasoning', 'usage', 'attachment', 'lifecycle', 'metadata', 'unknown'].includes(filter)) throw new DataError('invalid-request', 'Invalid event kind.');
+          const coverage = session.coverage;
+          const complete = coverage.complete && session.records.size === coverage.completeLines
+            && !coverage.pendingBytes && !coverage.dispositions.limited && !coverage.dispositions.malformed && !coverage.dispositions.unknown;
+          return send(res, 200, { ok: true, data: session.timeline.page(after, filter, complete) });
+        }
         if (route === 'cancel' && req.method === 'POST') {
           session.controller.abort();
           return send(res, 200, { ok: true, data: { cancelled: true } });

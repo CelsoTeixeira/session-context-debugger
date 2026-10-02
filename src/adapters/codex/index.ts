@@ -45,6 +45,7 @@ export const adaptCodex: Adapter = (record, meta, normalizer) => {
     if (string(object(payload.item).type)) meta.disposition = 'metadata';
   } else if (type === 'event_msg') {
     if (runtimeEvents.has(string(payload.type) ?? '')) meta.disposition = 'metadata';
+    if (['item_started', 'item_completed'].includes(string(payload.type) ?? '') && string(object(payload.item).type)) meta.disposition = 'metadata';
     if (payload.type === 'token_count' && payload.info === null) {
       normalizer.warnings.add('A token_count record has info:null: usage is unavailable, not zero.');
     }
