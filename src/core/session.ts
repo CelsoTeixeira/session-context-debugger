@@ -28,6 +28,7 @@ export class Session {
   state: Overview['state'] = 'indexing';
   error?: string;
   done?: Promise<void>;
+  linkedIdentity?: SourceRef;
   constructor(readonly source: SourceFile, readonly sources: Sources) {
     this.normalizer = new Normalizer(source);
     this.coverage = ledger(source.size);
@@ -35,6 +36,9 @@ export class Session {
   async index(): Promise<void> {
     try {
       this.coverage.prefixSha256 = await scan(this.source, ({ ref, bytes, pending }) => {
+        if (this.linkedIdentity?.id === ref.id && (pending || ref.sha256 !== this.linkedIdentity.sha256 || ref.offset !== this.linkedIdentity.offset)) {
+          throw new DataError('stale-reference', 'Linked provider identity changed during indexing. Reselect the T3 thread.', 409);
+        }
         const meta: RecordMeta = { ref, outerType: '(unparsed)', disposition: 'unknown' };
         if (this.records.size < MAX_RECORDS) this.records.set(ref.id, meta);
         else this.normalizer.warnings.add('Record index limit reached; remaining physical lines are counted but range navigation is incomplete.');
@@ -73,6 +77,9 @@ export class Session {
         this.coverage.normalizedItems = this.normalizer.items.length;
         this.coverage.normalizationLimited = this.normalizer.limitedItems;
       }, bytes => { this.coverage.scannedBytes = bytes; }, this.controller.signal);
+      if (this.linkedIdentity && !this.records.has(this.linkedIdentity.id)) {
+        throw new DataError('stale-reference', 'Linked provider identity is missing from the indexed snapshot. Reselect the T3 thread.', 409);
+      }
       this.coverage.complete = true;
       this.state = 'ready';
     } catch (error) {
@@ -115,7 +122,7 @@ export class Session {
     if (!Number.isSafeInteger(offset) || offset < 0 || offset > record.ref.byteLength && !pointer) {
       throw new DataError('invalid-range', 'Invalid record range.');
     }
-    if (pointer && !this.normalizer.items.some(item => item.ref.id === refId && item.ref.pointer === pointer)
+    if (pointer && !(this.linkedIdentity?.id === refId && this.linkedIdentity.pointer === pointer) && !this.normalizer.items.some(item => item.ref.id === refId && item.ref.pointer === pointer)
       && ![...this.normalizer.calls.values()].some(call => call.variants.some(variant => variant.refs.some(ref => ref.id === refId && ref.pointer === pointer)))) {
       throw new DataError('invalid-pointer', 'Select a recorded evidence field.');
     }
@@ -188,16 +195,21 @@ function utf8Range(bytes: Buffer, start: number, end: number): Buffer {
 
 export class Sessions {
   readonly entries = new Map<string, Session>();
+  private serial = 0;
   constructor(readonly sources: Sources) {}
-  async open(path: string): Promise<Session> {
+  async open(path: string, signal?: AbortSignal, identity?: SourceRef): Promise<Session> {
+    const serial = ++this.serial;
     const resolved = await this.sources.resolve(path);
     const info = await stat(resolved.path);
+    abortIfNeeded(signal);
+    if (serial !== this.serial) throw new DataError('cancelled', 'A newer recording selection replaced this request.', 409);
     // One selected index: changing selection cancels/releases the old index.
     for (const session of this.entries.values()) session.controller.abort();
     this.entries.clear();
     const source: SourceFile = { id: randomUUID(), generation: randomUUID(), originalPath: path,
       resolvedPath: resolved.path, family: resolved.family, size: info.size, modifiedAt: info.mtime.toISOString() };
     const session = new Session(source, this.sources);
+    if (identity) session.linkedIdentity = { ...identity, sourceId: source.id, generation: source.generation };
     this.entries.set(session.id, session);
     session.done = session.index();
     return session;

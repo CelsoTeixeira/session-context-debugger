@@ -5,6 +5,8 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { DataError, Sources, within } from '../core/source.js';
 import { Sessions } from '../core/session.js';
+import { T3Catalog } from '../core/t3.js';
+import { T3Links } from '../core/t3-links.js';
 import { object, string } from '../core/json.js';
 
 const uiRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../ui');
@@ -39,6 +41,8 @@ export async function createApp(roots?: string[]) {
   const sources = new Sources(roots);
   await sources.initialize();
   const sessions = new Sessions(sources);
+  const t3 = new T3Catalog();
+  const links = new T3Links(t3, sources);
   const token = randomBytes(32).toString('base64url');
   let origin = '';
   const server = createServer(async (req, res) => {
@@ -57,14 +61,29 @@ export async function createApp(roots?: string[]) {
       if (url.pathname.startsWith('/api/')) {
         if (!authorized(req, origin, token)) throw new DataError('unauthorized', 'Use the access link printed by this app launch.', 401);
         if (url.pathname === '/api/sources' && req.method === 'GET') {
-          return send(res, 200, { ok: true, data: await sources.list(url.searchParams.get('cursor') ?? undefined, controller.signal) });
+          const family = url.searchParams.get('family');
+          if (family !== null && family !== 'claude' && family !== 'codex') throw new DataError('invalid-request', 'Invalid source family.');
+          return send(res, 200, { ok: true, data: await sources.list(url.searchParams.get('cursor') ?? undefined, controller.signal, family ?? undefined) });
+        }
+        if (url.pathname === '/api/t3/threads' && req.method === 'GET') {
+          return send(res, 200, { ok: true, data: await t3.list(url.searchParams.get('cursor') ?? undefined) });
+        }
+        const evidence = /^\/api\/t3\/evidence\/([0-9a-f-]{36})$/.exec(url.pathname);
+        if (evidence && req.method === 'GET') return send(res, 200, { ok: true, data: await t3.evidence(evidence[1]!) });
+        const t3Thread = /^\/api\/t3\/threads\/([0-9a-f-]{36})\/(resolve|open)$/.exec(url.pathname);
+        if (t3Thread && req.method === 'POST') {
+          if (t3Thread[2] === 'resolve') return send(res, 200, { ok: true, data: await links.resolve(t3Thread[1]!, controller.signal) });
+          const body = await readBody(req);
+          const match = await links.validate(t3Thread[1]!, string(body.resolutionId) ?? '', string(body.matchId) ?? '', controller.signal);
+          const session = await sessions.open(match.path, controller.signal, match.identity);
+          return send(res, 202, { ok: true, data: { id: session.id, identity: session.linkedIdentity } });
         }
         if (url.pathname === '/api/sessions/open' && req.method === 'POST') {
           const body = await readBody(req);
           const sourceId = string(body.sourceId);
           const path = sourceId ? sources.candidates.get(sourceId)?.path : string(body.path);
           if (!path) throw new DataError('unsupported-path', 'Choose a listed source or enter its absolute JSONL path.');
-          const session = await sessions.open(path);
+          const session = await sessions.open(path, controller.signal);
           return send(res, 202, { ok: true, data: { id: session.id } });
         }
         const match = /^\/api\/sessions\/([0-9a-f-]+)\/(overview|ledger|cancel|records(?:\/r\d+)?)$/.exec(url.pathname);

@@ -128,3 +128,49 @@ export interface RecordView {
   validated: true;
 }
 export type ApiResult<T> = { ok: true; data: T } | { ok: false; error: { code: string; message: string } };
+
+export type SourceMode = 't3' | 'claude' | 'codex';
+export interface T3Thread {
+  id: string;
+  title: string;
+  project: string;
+  workspace?: string;
+  provider?: string;
+  updatedAt: string;
+  archived: boolean;
+}
+export interface T3Listing {
+  threads: T3Thread[];
+  databasePath: string;
+  cursor?: string;
+  warnings: string[];
+}
+// A captured SQL projection has a row key and value hash, never a JSONL line.
+export interface DatabaseRef {
+  id: string;
+  databasePath: string;
+  generation: string;
+  table: 'projection_threads' | 'projection_projects' | 'provider_session_runtime';
+  key: string;
+  columns: string[];
+  sha256: string;
+  inspectedAt: string;
+  pointer?: string;
+}
+export interface DatabaseView { ref: DatabaseRef; text: string; validated: true }
+export interface LogMatch {
+  id: string;
+  path: string;
+  identity: SourceRef;
+}
+export interface T3Resolution {
+  id: string;
+  thread: T3Thread;
+  refs: DatabaseRef[];
+  providerId?: string;
+  providerInstance?: string;
+  status: 'verified' | 'ambiguous' | 'log-missing' | 'unlinked' | 'unsupported';
+  matches: LogMatch[];
+  complete: boolean | null;
+  warnings: string[];
+}

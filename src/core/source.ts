@@ -18,7 +18,7 @@ export const within = (root: string, path: string): boolean => {
 export class Sources {
   readonly candidates = new Map<string, Candidate>();
   private roots: string[] = [];
-  private listings = new Map<string, { items: Candidate[]; complete: boolean; warnings: string[]; inspected: number; at: number }>();
+  private listings = new Map<string, { items: Candidate[]; complete: boolean; warnings: string[]; inspected: number; at: number; family?: Family }>();
 
   constructor(private configuredRoots = [
     resolve(homedir(), '.codex/sessions'),
@@ -27,7 +27,12 @@ export class Sources {
   ]) {}
   async initialize(): Promise<void> {
     for (const root of this.configuredRoots) {
-      try { if ((await stat(root)).isDirectory()) this.roots.push(await realpath(root)); }
+      try {
+        if ((await stat(root)).isDirectory()) {
+          const actual = await realpath(root);
+          if (!this.roots.includes(actual)) this.roots.push(actual);
+        }
+      }
       catch { /* Missing default roots are permitted. */ }
     }
   }
@@ -49,7 +54,7 @@ export class Sources {
     const normalized = path.replaceAll('\\', '/').toLowerCase();
     return normalized.includes('/.codex/') ? 'codex' : normalized.includes('/.claude/') ? 'claude' : 'unknown';
   }
-  async list(cursor?: string, signal?: AbortSignal): Promise<SourceListing> {
+  async list(cursor?: string, signal?: AbortSignal, family?: Family): Promise<SourceListing> {
     abortIfNeeded(signal);
     let key: string;
     let start = 0;
@@ -57,14 +62,15 @@ export class Sources {
       const parts = cursor.split(':');
       key = parts[0] ?? '';
       start = Number(parts[1]);
-      if (!this.listings.has(key) || !Number.isSafeInteger(start) || start < 0) {
+      if (!this.listings.has(key) || this.listings.get(key)?.family !== family || !Number.isSafeInteger(start) || start < 0) {
         throw new DataError('invalid-cursor', 'Source listing expired; rescan the list.');
       }
     } else {
       key = randomUUID();
       const items: Candidate[] = [];
       const warnings: string[] = [];
-      const queue = [...this.roots];
+      const queue = this.roots.filter(root => !family || this.family(root) === family || this.family(root) === 'unknown');
+      const visited = new Set<string>();
       const started = Date.now();
       let inspected = 0;
       let inspectedDirectories = 0;
@@ -77,6 +83,8 @@ export class Sources {
         try {
           const actual = await realpath(dirPath);
           if (!this.roots.some(root => within(root, actual))) { warnings.push('Skipped a directory outside the resolved roots.'); continue; }
+          if (visited.has(actual)) continue;
+          visited.add(actual);
           dir = await opendir(actual);
         }
         catch { warnings.push('Could not enumerate ' + dirPath); continue; }
@@ -90,17 +98,18 @@ export class Sources {
             inspected++;
             try {
               const info = await stat(path);
-              items.push({ id: randomUUID(), path, family: this.family(path), bytes: info.size, modifiedAt: info.mtime.toISOString() });
+              if (!family || this.family(path) === family) items.push({ id: randomUUID(), path, family: this.family(path), bytes: info.size, modifiedAt: info.mtime.toISOString() });
             } catch { warnings.push('A candidate disappeared while listing.'); }
           }
         }
       }
       items.sort((a, b) => b.modifiedAt.localeCompare(a.modifiedAt));
       if (!complete) warnings.push('Stat scan stopped at its time/file limit. Ordering is recent within the inspected candidates.');
+      abortIfNeeded(signal);
       this.candidates.clear();
       this.listings.clear();
       for (const item of items) this.candidates.set(item.id, item);
-      this.listings.set(key, { items, complete, warnings, inspected, at: Date.now() });
+      this.listings.set(key, { items, complete, warnings, inspected, at: Date.now(), family });
     }
     const listing = this.listings.get(key)!;
     if (Date.now() - listing.at > 10 * 60_000) throw new DataError('invalid-cursor', 'Source listing expired; rescan the list.');
@@ -112,5 +121,43 @@ export class Sources {
       complete: listing.complete,
       warnings: listing.warnings,
     };
+  }
+
+  async locate(family: Family, providerId: string, signal?: AbortSignal): Promise<{ paths: string[]; complete: boolean; warnings: string[] }> {
+    const paths: string[] = [];
+    const warnings: string[] = [];
+    const queue = this.roots.filter(root => this.family(root) === family || this.family(root) === 'unknown');
+    const visited = new Set<string>();
+    const started = Date.now();
+    let inspected = 0;
+    let complete = true;
+    if (!queue.length) { complete = false; warnings.push('No available allowed roots cover this provider. A recording cannot be located within this launch configuration.'); }
+    outer: while (queue.length) {
+      abortIfNeeded(signal);
+      if (Date.now() - started > 4000 || ++inspected > 20000) { complete = false; break; }
+      const path = queue.shift()!;
+      try {
+        const actual = await realpath(path);
+        if (!this.roots.some(root => within(root, actual))) { complete = false; continue; }
+        if (visited.has(actual)) continue;
+        visited.add(actual);
+        const dir = await opendir(actual);
+        for await (const entry of dir) {
+          abortIfNeeded(signal);
+          if (Date.now() - started > 4000 || ++inspected > 20000 || paths.length >= 100) { complete = false; break outer; }
+          if (entry.isSymbolicLink()) continue;
+          const child = resolve(actual, entry.name);
+          if (entry.isDirectory()) queue.push(child);
+          else if (entry.isFile() && entry.name.toLowerCase().endsWith('.jsonl') && entry.name.toLowerCase().includes(providerId.toLowerCase())) paths.push(child);
+        }
+      } catch (error) {
+        abortIfNeeded(signal);
+        complete = false;
+        warnings.push('A directory was unavailable during provider-log discovery.');
+      }
+    }
+    if (!complete) warnings.push('Provider-log discovery is incomplete (4-second / 20,000-entry / 100-candidate limit or unavailable directory).');
+    warnings.push('Discovery checks filenames containing the recorded provider ID, then corroborates their bounded log prefix. Other filenames and historical bindings are outside this coverage.');
+    return { paths, complete, warnings };
   }
 }

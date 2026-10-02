@@ -1,11 +1,11 @@
 :root { font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #28312e; background: #f6f7f3; font-synthesis: none; line-height: 1.5; font-size: 14px; }
 * { box-sizing: border-box; }
 body { margin: 0; }
-button, input, textarea { font: inherit; }
+button, input, textarea, select { font: inherit; }
 button { cursor: pointer; border: 1px solid #dce0d8; background: #fff; border-radius: 6px; color: #36463b; padding: 6px 10px; transition: background 120ms; }
 button:hover { background: #edf2e8; }
 button:disabled { cursor: default; opacity: .5; }
-button:focus-visible, textarea:focus-visible, summary:focus-visible { outline: 2px solid #729953; outline-offset: 3px; }
+button:focus-visible, textarea:focus-visible, select:focus-visible, summary:focus-visible { outline: 2px solid #729953; outline-offset: 3px; }
 h1, h2, p { margin-top: 0; }
 h1 { font-size: 27px; line-height: 1.25; letter-spacing: -.8px; font-weight: 600; margin-bottom: 10px; }
 h2 { font-size: 14px; font-weight: 650; margin: 0; }
@@ -19,6 +19,11 @@ h2 { font-size: 14px; font-weight: 650; margin: 0; }
 .session-sidebar { position: sticky; top: 0; align-self: start; height: calc(100vh - 64px); overflow-y: auto; border-right: 1px solid #dfe3da; padding: 26px 16px; background: #f0f2ec; }
 .section-label { text-transform: uppercase; letter-spacing: 1.6px; color: #7b867b; font-weight: 700; font-size: 10px; margin-bottom: 12px; }
 .session-sidebar label { display: block; font-size: 12px; margin-bottom: 7px; }
+.source-picker { width: 100%; border: 1px solid #d2d9cc; background: #fff; border-radius: 6px; padding: 9px; color: #3a463b; font-size: 12px; margin-bottom: 20px; }
+.t3-context { padding: 4px 0 20px; margin-bottom: 20px; border-bottom: 1px solid #dfe3d9; }
+.t3-context .muted { margin: 8px 0; }
+.t3-evidence { display: flex; flex-wrap: wrap; gap: 7px; margin: 12px 0; }
+.t3-evidence button { font-size: 11px; }
 textarea { display: block; width: 100%; resize: vertical; border: 1px solid #d2d9cc; background: #fff; border-radius: 6px; padding: 9px; font-size: 12px; color: #3a463b; }
 .primary { background: #385137; color: white; border-color: #385137; width: 100%; margin-top: 9px; padding: 9px; }
 .primary:hover { background: #476344; }
