@@ -93,7 +93,17 @@ export async function createApp(roots?: string[]) {
         if (route === 'overview' && req.method === 'GET') return send(res, 200, { ok: true, data: session.overview() });
         if (route === 'usage' && req.method === 'GET') {
           const after = Number(url.searchParams.get('after') ?? 0);
+          const order = url.searchParams.get('order') ?? 'source';
+          if (order !== 'source' && order !== 'input') throw new DataError('invalid-request', 'Invalid usage order.');
           const calls = [...session.normalizer.calls.values()];
+          if (order === 'input') {
+            const input = (call: typeof calls[number]) => call.status === 'resolved' && call.variants.length === 1 ? call.variants[0]!.values.input : null;
+            calls.sort((a, b) => {
+              const left = input(a), right = input(b);
+              return left === null ? right === null ? a.firstLine - b.firstLine : 1
+                : right === null ? -1 : right - left || a.firstLine - b.firstLine;
+            });
+          }
           if (!Number.isSafeInteger(after) || after < 0 || after > calls.length) throw new DataError('invalid-cursor', 'Invalid usage cursor.');
           const end = Math.min(calls.length, after + 20);
           return send(res, 200, { ok: true, data: { total: calls.length, after: end < calls.length ? end : undefined,

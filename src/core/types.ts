@@ -162,6 +162,8 @@ export interface TimelineEvent {
   pairStatus?: 'paired' | 'orphan' | 'ambiguous' | 'unassigned';
   related?: SourceRef[];
   relatedPositions?: number[];
+  serializedBytes: number | null;
+  allocatedBytes: number | null;
 }
 export interface TimelinePage {
   events: TimelineEvent[];
@@ -187,6 +189,15 @@ export interface TimelineMap {
   total: number;
   matching: number;
   omitted: number;
+  ranking: Array<{
+    category: TimelineCategory;
+    representation: TimelineEvent['representation'];
+    events: number;
+    measuredEvents: number;
+    bytes: number;
+    firstRef: SourceRef;
+    largest?: { bytes: number; ref: SourceRef };
+  }>;
 }
 
 export type SourceMode = 't3' | 'claude' | 'codex';

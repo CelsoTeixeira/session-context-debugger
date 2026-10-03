@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { Overview, SourceRef, TimelineCategory, TimelineMap, TimelinePage } from '../core/types';
 import { timelineCategory } from '../core/timeline-category';
 import { api } from './api';
+import { CategoryRanking, payloadSize } from './CategoryRanking';
 
 const categories: Array<[TimelineCategory, string]> = [
   ['user', 'User input'], ['instruction', 'Instructions'], ['assistant', 'Assistant'], ['message', 'Other message'],
@@ -95,6 +96,7 @@ export function Timeline({ overview, onInspect }: { overview: Overview; onInspec
       </div>
       <div className="timeline-scale"><span>Recording start</span><span>{map ? map.matching.toLocaleString() + ' events match the filter' : ''}</span><span>Latest indexed event</span></div>
     </div>
+    <CategoryRanking ranking={map?.ranking} labels={categories} omitted={map?.omitted ?? 0} onInspect={onInspect} />
     <div className="timeline-toolbar">
       <div><label htmlFor="timeline-kind">Show activity</label>{' '}<select id="timeline-kind" value={kind} onChange={event => { setKind(event.target.value); navigate(0); }}>
         <option value="all">All records</option><option value="message">Messages</option><option value="tools">Tool calls and results</option><option value="reasoning">Captured reasoning</option><option value="usage">Usage observations</option><option value="attachment">Attachments and snapshots</option><option value="lifecycle">Lifecycle</option><option value="metadata">Metadata</option><option value="unknown">Unknown and limited records</option>
@@ -121,6 +123,7 @@ export function Timeline({ overview, onInspect }: { overview: Overview; onInspec
         <div className="timeline-evidence"><span className="timeline-type">{categoryLabel(timelineCategory(selected))}</span><span>{selected.representation}</span><span>{selected.origin}</span>{selected.pairStatus ? <span className="badge amber">{selected.pairStatus}{!page.complete ? ' · coverage incomplete' : ''}</span> : null}</div>
         {selected.preview ? <p className="timeline-preview">{selected.preview}{selected.previewLimited ? '\n[Preview shortened; inspect source to continue.]' : ''}</p> : <p className="muted">Open the source to read the captured fields.</p>}
         <p className="muted">{selected.detail}</p>
+        <p className="muted">Captured field size: {selected.serializedBytes === null ? 'Unknown' : payloadSize(selected.serializedBytes)} after compact JSON encoding.{selected.allocatedBytes !== null && selected.allocatedBytes !== selected.serializedBytes ? ' Ranking allocates ' + payloadSize(selected.allocatedBytes) + ' here; overlapping captured fields share bytes once.' : ''}</p>
         <div className="pager timeline-related"><button onClick={() => onInspect(selected.ref)}>Inspect source ↗</button>{selected.related?.map((ref, i) => <button key={ref.id + ':' + ref.pointer + ':' + i} onClick={() => navigate(selected.relatedPositions![i]!)}>Go to {selected.kind === 'tool-call' ? 'result' : 'call'} · line {ref.line}</button>)}</div>
         <details className="timeline-identities"><summary>Recorded time and identifiers</summary><span className="path">Time: {selected.timestamp ?? 'unknown'}<br />Actor: {selected.actorId}<br />Recorded ID: {selected.recordedId ?? 'unknown'}<br />Tool ID: {selected.toolId ?? 'unknown'}</span></details>
       </article> : null}

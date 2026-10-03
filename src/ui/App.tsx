@@ -7,7 +7,7 @@ import { EvidenceInspector } from './EvidenceInspector';
 import { DatabaseInspector } from './DatabaseInspector';
 import { T3Context } from './T3Context';
 import { Timeline } from './Timeline';
-import { SessionUsage } from './SessionUsage';
+import { SessionUsage, SessionUsageSummary } from './SessionUsage';
 
 const formatBytes = (bytes: number): string => bytes >= 1024 * 1024 ? (bytes / 1024 / 1024).toFixed(1) + ' MB' : (bytes / 1024).toFixed(1) + ' KB';
 export function App() {
@@ -203,10 +203,11 @@ export function App() {
           <div className="session-strip"><div><span className="muted">{overview.source.runtime ?? 'Runtime unknown'} · {overview.source.version ?? 'Version unknown'} · {formatBytes(overview.source.size)}</span><div className="path">{overview.source.originalPath}</div></div><button onClick={() => resolution ? void openThread(resolution.thread.id) : void openPath(overview.source.originalPath)}>Reopen</button></div>
           {overview.state === 'indexing' ? <div className="scan-progress"><progress max={overview.coverage.inspectedBytes || 1} value={overview.coverage.scannedBytes} /><span>Indexing recording… <button onClick={() => void api('/api/sessions/' + overview.id + '/cancel', { method: 'POST', body: '{}' })}>Cancel</button></span></div> : null}
           {overview.warnings.length ? <details className="warnings"><summary>{overview.warnings.length} evidence/coverage note{overview.warnings.length === 1 ? '' : 's'}</summary><ul>{overview.warnings.map((warning, i) => <li key={i}>{warning}</li>)}</ul></details> : null}
-          <SessionUsage key={'usage:' + overview.id} overview={overview} onInspect={inspect} />
+          <SessionUsageSummary overview={overview} />
           <div className="segmented session-view" aria-label="Recording view"><button className={sessionView === 'timeline' ? 'selected' : ''} aria-pressed={sessionView === 'timeline'} onClick={() => setSessionView('timeline')}>Visual timeline</button><button className={sessionView === 'beginning' ? 'selected' : ''} aria-pressed={sessionView === 'beginning'} onClick={() => setSessionView('beginning')}>Beginning and instructions</button></div>
           <div hidden={sessionView !== 'beginning'}><Beginning overview={overview} onInspect={inspect} /></div>
           <div hidden={sessionView !== 'timeline'}><Timeline key={'timeline:' + overview.id} overview={overview} onInspect={inspect} /></div>
+          <SessionUsage key={'usage:' + overview.id} overview={overview} onInspect={inspect} />
           <Coverage key={overview.id} overview={overview} onInspect={inspect} />
         </> : !resolution && !opening ? <div className="empty-state"><div className="section-label">A recording, with its receipts</div><h1>Start at the beginning.</h1><p>{mode === 't3' ? 'Select a T3 thread to inspect its current provider binding and a verified linked recording.' : 'Select a recording to inspect the first input, captured instructions, diagnostic snapshots, and provider-reported usage.'}</p><div className="empty-rule" /><p className="muted">Recorded data, request payloads, active-context evidence, and unknowns keep their own meaning.</p></div> : null}
       </main>

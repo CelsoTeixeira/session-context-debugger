@@ -1,5 +1,6 @@
 import { array, identifier, object } from './json.js';
 import { timelineCategory } from './timeline-category.js';
+import { measureCaptures } from './payload-size.js';
 import type { Obj } from './json.js';
 import type { EventKind, RecordMeta, SourceFile, TimelineEvent, TimelineMap, TimelinePage } from './types.js';
 
@@ -28,6 +29,7 @@ export class Timeline {
         id: meta.ref.id + ':event:' + (this.events.length - start), position: this.events.length, ref: { ...meta.ref, pointer },
         kind, label, actorId, timestamp, origin: 'unknown', representation: 'unknown',
         detail: 'Recorded content; request delivery and active inclusion are unknown.',
+        serializedBytes: null, allocatedBytes: null,
         preview: text.slice(0, PREVIEW), previewLimited: text.length > PREVIEW, ...options,
       };
       this.events.push(event);
@@ -141,6 +143,7 @@ export class Timeline {
           detail: meta.reason ?? 'Physical record retained with disposition: ' + meta.disposition + '. Inspect raw source for its full content.',
         });
     }
+    measureCaptures(record, this.events.slice(start));
   }
   page(after: number, filter: string, scanComplete: boolean): TimelinePage {
     const events: TimelineEvent[] = [];
@@ -165,6 +168,7 @@ export class Timeline {
   }
   map(filter: string): TimelineMap {
     const bins: TimelineMap['bins'] = [];
+    const ranking = new Map<string, TimelineMap['ranking'][number]>();
     const width = Math.max(1, Math.ceil(this.events.length / 120));
     let matching = 0;
     for (let start = 0; start < this.events.length; start += width) {
@@ -174,11 +178,19 @@ export class Timeline {
       for (let i = start; i < end; i++) {
         const event = this.events[i]!;
         const category = timelineCategory(event);
+        const key = event.representation + ':' + category;
+        const row = ranking.get(key) ?? { category, representation: event.representation, events: 0, measuredEvents: 0, bytes: 0, firstRef: event.ref };
+        row.events++;
+        if (event.allocatedBytes !== null) {
+          row.measuredEvents++; row.bytes += event.allocatedBytes;
+          if (!row.largest || event.allocatedBytes > row.largest.bytes) row.largest = { bytes: event.allocatedBytes, ref: event.ref };
+        }
+        ranking.set(key, row);
         bin.counts[category] = (bin.counts[category] ?? 0) + 1;
         if (matches(event, filter)) { bin.matching++; bin.firstMatch ??= i; matching++; }
       }
       bins.push(bin);
     }
-    return { bins, total: this.events.length, matching, omitted: this.omitted };
+    return { bins, total: this.events.length, matching, omitted: this.omitted, ranking: [...ranking.values()] };
   }
 }
