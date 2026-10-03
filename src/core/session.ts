@@ -6,6 +6,7 @@ import { adaptClaude } from '../adapters/claude/index.js';
 import { identifier, object } from './json.js';
 import { Normalizer } from './normalize.js';
 import { Timeline } from './timeline.js';
+import { summarizeUsage } from './usage.js';
 import { MAX_ITEMS, MAX_RECORDS, PARSE_BYTES, PREVIEW_UNITS, scan } from './scanner.js';
 import { abortIfNeeded, DataError, Sources } from './source.js';
 import type { CoverageLedger, Overview, RecordMeta, RecordView, SourceFile, SourceRef } from './types.js';
@@ -120,6 +121,7 @@ export class Session {
         && item.ref.line <= (firstCall?.firstLine ?? Number.MAX_SAFE_INTEGER)).slice(0, 200),
       snapshots: items.filter(item => item.kind === 'snapshot').slice(0, 200),
       firstCall, callCount: calls.length, ambiguousCalls: calls.filter(call => call.status === 'ambiguous').length,
+      usage: summarizeUsage(calls),
       warnings, limits: { parseBytes: PARSE_BYTES, previewCodeUnits: PREVIEW_UNITS, maxRecords: MAX_RECORDS, maxItems: MAX_ITEMS },
     };
   }

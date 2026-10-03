@@ -7,6 +7,7 @@ import { EvidenceInspector } from './EvidenceInspector';
 import { DatabaseInspector } from './DatabaseInspector';
 import { T3Context } from './T3Context';
 import { Timeline } from './Timeline';
+import { SessionUsage } from './SessionUsage';
 
 const formatBytes = (bytes: number): string => bytes >= 1024 * 1024 ? (bytes / 1024 / 1024).toFixed(1) + ' MB' : (bytes / 1024).toFixed(1) + ' KB';
 export function App() {
@@ -14,6 +15,8 @@ export function App() {
   const [accessGeneration, setAccessGeneration] = useState(0);
   const [mode, setMode] = useState<SourceMode>('t3');
   const [sessionView, setSessionView] = useState<'timeline' | 'beginning'>('timeline');
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const sidebarToggle = useRef<HTMLButtonElement>(null);
   const [listing, setListing] = useState<{ kind: 't3'; data: T3Listing } | { kind: 'claude' | 'codex'; data: SourceListing }>();
   const [resolution, setResolution] = useState<T3Resolution>();
   const [linkIdentity, setLinkIdentity] = useState<SourceRef>();
@@ -39,6 +42,7 @@ export function App() {
     setResolution(undefined);
     setLinkIdentity(undefined);
     setError('');
+    setSidebarOpen(true);
   }
   function inspect(ref: SourceRef) { setDatabaseRef(undefined); setSelectedRef(ref); }
   function inspectDatabase(ref: DatabaseRef) { setSelectedRef(undefined); setDatabaseRef(ref); }
@@ -99,7 +103,7 @@ export function App() {
       const result = await api<{ id: string }>('/api/sessions/open', {
         method: 'POST', body: JSON.stringify(sourceId ? { sourceId } : { path: value }), signal: controller.signal,
       });
-      if (serial === selectionSerial.current) setSessionId(result.id);
+      if (serial === selectionSerial.current) { setSessionId(result.id); setSidebarOpen(false); }
     } catch (error) { if (serial === selectionSerial.current) setError((error as Error).message); }
     finally { if (serial === selectionSerial.current) setOpening(false); }
   }
@@ -111,6 +115,7 @@ export function App() {
     setPath(match.path);
     setSessionId(result.id);
     setLinkIdentity(result.identity);
+    setSidebarOpen(false);
   }
   async function openThread(id: string) {
     clearSelection();
@@ -122,6 +127,7 @@ export function App() {
       const value = await api<T3Resolution>('/api/t3/threads/' + id + '/resolve', { method: 'POST', body: '{}', signal: controller.signal });
       if (serial !== selectionSerial.current || controller.signal.aborted) return;
       setResolution(value);
+      setSidebarOpen(false);
       if (value.status === 'verified' && value.matches[0]) await openLinked(value, value.matches[0], controller, serial);
     } catch (error) { if (serial === selectionSerial.current && !controller.signal.aborted) setError((error as Error).message); }
     finally { if (serial === selectionSerial.current) setOpening(false); }
@@ -145,6 +151,9 @@ export function App() {
   }
   useEffect(() => () => openController.current?.abort(), []);
   useEffect(() => {
+    if (!sidebarOpen) sidebarToggle.current?.focus();
+  }, [sidebarOpen]);
+  useEffect(() => {
     if (!sessionId) return;
     const controller = new AbortController();
     let timer: ReturnType<typeof setTimeout>;
@@ -161,9 +170,9 @@ export function App() {
   }, [sessionId]);
   if (!hasAccess) return <div className="access-page"><span className="brand-mark">↳</span><h1>Session Context Debugger</h1><p>Open the access link printed in the terminal when you launch the app.</p><p className="muted">The access credential stays in this tab. Reopening the link restores access after a reload.</p></div>;
   return <>
-    <header className="app-header"><div className="brand"><span className="brand-mark">↳</span><strong>Session Context Debugger</strong></div><span className="local-indicator"><span className="dot" /> Local · read-only</span></header>
-    <div className={'workspace ' + (selectedRef || databaseRef ? 'with-inspector' : '')}>
-      <nav className="session-sidebar" aria-label="Session sources">
+    <header className="app-header"><div className="brand"><span className="brand-mark">↳</span><strong>Session Context Debugger</strong></div><div className="header-actions"><button ref={sidebarToggle} className="sidebar-toggle" aria-controls="session-sources" aria-expanded={sidebarOpen} onClick={() => setSidebarOpen(value => !value)}>{sidebarOpen ? 'Hide sessions' : 'Select session'}</button><span className="local-indicator"><span className="dot" /> Local · read-only</span></div></header>
+    <div className={'workspace ' + (sidebarOpen ? '' : 'without-sidebar ') + (selectedRef || databaseRef ? 'with-inspector' : '')}>
+      <nav id="session-sources" className="session-sidebar" aria-label="Session sources" hidden={!sidebarOpen}>
         <div className="section-label">Select a session</div>
         <label htmlFor="source-mode">Session source</label>
         <select className="source-picker" id="source-mode" value={mode} onChange={event => changeMode(event.target.value as SourceMode)}><option value="t3">T3 Code</option><option value="claude">Claude</option><option value="codex">Codex</option></select>
@@ -194,6 +203,7 @@ export function App() {
           <div className="session-strip"><div><span className="muted">{overview.source.runtime ?? 'Runtime unknown'} · {overview.source.version ?? 'Version unknown'} · {formatBytes(overview.source.size)}</span><div className="path">{overview.source.originalPath}</div></div><button onClick={() => resolution ? void openThread(resolution.thread.id) : void openPath(overview.source.originalPath)}>Reopen</button></div>
           {overview.state === 'indexing' ? <div className="scan-progress"><progress max={overview.coverage.inspectedBytes || 1} value={overview.coverage.scannedBytes} /><span>Indexing recording… <button onClick={() => void api('/api/sessions/' + overview.id + '/cancel', { method: 'POST', body: '{}' })}>Cancel</button></span></div> : null}
           {overview.warnings.length ? <details className="warnings"><summary>{overview.warnings.length} evidence/coverage note{overview.warnings.length === 1 ? '' : 's'}</summary><ul>{overview.warnings.map((warning, i) => <li key={i}>{warning}</li>)}</ul></details> : null}
+          <SessionUsage key={'usage:' + overview.id} overview={overview} onInspect={inspect} />
           <div className="segmented session-view" aria-label="Recording view"><button className={sessionView === 'timeline' ? 'selected' : ''} aria-pressed={sessionView === 'timeline'} onClick={() => setSessionView('timeline')}>Visual timeline</button><button className={sessionView === 'beginning' ? 'selected' : ''} aria-pressed={sessionView === 'beginning'} onClick={() => setSessionView('beginning')}>Beginning and instructions</button></div>
           <div hidden={sessionView !== 'beginning'}><Beginning overview={overview} onInspect={inspect} /></div>
           <div hidden={sessionView !== 'timeline'}><Timeline key={'timeline:' + overview.id} overview={overview} onInspect={inspect} /></div>

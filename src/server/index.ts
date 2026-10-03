@@ -86,11 +86,21 @@ export async function createApp(roots?: string[]) {
           const session = await sessions.open(path, controller.signal);
           return send(res, 202, { ok: true, data: { id: session.id } });
         }
-        const match = /^\/api\/sessions\/([0-9a-f-]+)\/(overview|events|ledger|cancel|records(?:\/r\d+)?)$/.exec(url.pathname);
+        const match = /^\/api\/sessions\/([0-9a-f-]+)\/(overview|events|usage|ledger|cancel|records(?:\/r\d+)?)$/.exec(url.pathname);
         if (!match || !uuid.test(match[1] ?? '')) throw new DataError('not-found', 'API route unavailable.', 404);
         const session = sessions.get(match[1]!);
         const route = match[2]!;
         if (route === 'overview' && req.method === 'GET') return send(res, 200, { ok: true, data: session.overview() });
+        if (route === 'usage' && req.method === 'GET') {
+          const after = Number(url.searchParams.get('after') ?? 0);
+          const calls = [...session.normalizer.calls.values()];
+          if (!Number.isSafeInteger(after) || after < 0 || after > calls.length) throw new DataError('invalid-cursor', 'Invalid usage cursor.');
+          const end = Math.min(calls.length, after + 20);
+          return send(res, 200, { ok: true, data: { total: calls.length, after: end < calls.length ? end : undefined,
+            calls: calls.slice(after, end).map(call => ({ id: call.id, actorId: call.actorId, model: call.model,
+              identityDetail: call.identityDetail, status: call.status, firstLine: call.firstLine,
+              variants: call.variants.map(variant => ({ values: variant.values, ref: variant.refs[0], matchingRefs: variant.refs.length })) })) } });
+        }
         if (route === 'events' && req.method === 'GET') {
           const after = Number(url.searchParams.get('after') ?? 0);
           const filter = url.searchParams.get('kind') ?? 'all';

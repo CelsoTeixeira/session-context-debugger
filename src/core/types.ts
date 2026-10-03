@@ -52,6 +52,18 @@ export interface ModelCall {
   variants: UsageVariant[];
   firstLine: number;
 }
+export interface UsageSummary {
+  includedCalls: number;
+  excludedCalls: number;
+  fields: Record<keyof UsageValues, { tokens: number | null; calls: number; overflow: boolean }>;
+}
+export interface UsagePage {
+  calls: Array<Pick<ModelCall, 'id' | 'actorId' | 'identityDetail' | 'model' | 'status' | 'firstLine'> & {
+    variants: Array<{ values: UsageValues; ref: SourceRef; matchingRefs: number }>;
+  }>;
+  after?: number;
+  total: number;
+}
 export interface RecordMeta {
   ref: SourceRef;
   outerType: string;
@@ -99,6 +111,7 @@ export interface Overview {
   firstCall?: ModelCall;
   callCount: number;
   ambiguousCalls: number;
+  usage: UsageSummary;
   warnings: string[];
   limits: { parseBytes: number; previewCodeUnits: number; maxRecords: number; maxItems: number };
 }

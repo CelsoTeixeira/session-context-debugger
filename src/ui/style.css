@@ -13,10 +13,16 @@ h2 { font-size: 14px; font-weight: 650; margin: 0; }
 .brand { display: flex; align-items: center; gap: 12px; letter-spacing: -.2px; }
 .brand-mark { background: #d4e7b4; color: #28442c; width: 30px; height: 30px; border-radius: 8px; font-size: 23px; display: inline-flex; align-items: center; justify-content: center; }
 .local-indicator { color: #bdcabe; font-size: 12px; display: flex; align-items: center; gap: 7px; }
+.header-actions { display: flex; align-items: center; gap: 16px; }
+.sidebar-toggle { background: #303e34; color: #f3f7ef; border-color: #526153; font-size: 11px; white-space: nowrap; }
+.sidebar-toggle:hover { background: #405044; }
 .dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #8db25b; }
 .workspace { display: grid; grid-template-columns: 265px minmax(0, 1fr); min-height: calc(100vh - 64px); }
 .workspace.with-inspector { grid-template-columns: 265px minmax(380px, 1fr) minmax(340px, 36%); }
+.workspace.without-sidebar { grid-template-columns: minmax(0, 1fr); }
+.workspace.without-sidebar.with-inspector { grid-template-columns: minmax(380px, 1fr) minmax(340px, 36%); }
 .session-sidebar { position: sticky; top: 0; align-self: start; height: calc(100vh - 64px); overflow-y: auto; border-right: 1px solid #dfe3da; padding: 26px 16px; background: #f0f2ec; }
+.session-sidebar[hidden] { display: none; }
 .section-label { text-transform: uppercase; letter-spacing: 1.6px; color: #7b867b; font-weight: 700; font-size: 10px; margin-bottom: 12px; }
 .session-sidebar label { display: block; font-size: 12px; margin-bottom: 7px; }
 .source-picker { width: 100%; border: 1px solid #d2d9cc; background: #fff; border-radius: 6px; padding: 9px; color: #3a463b; font-size: 12px; margin-bottom: 20px; }
@@ -56,6 +62,10 @@ textarea { display: block; width: 100%; resize: vertical; border: 1px solid #d2d
 .prompt-footer span { color: #7e897b; font-size: 11px; }
 .prompt-footer button { flex-shrink: 0; font-size: 11px; }
 .usage-panel { border-bottom: 1px solid #dfe4d7; padding: 13px 0 24px; margin-bottom: 25px; }
+.session-usage { margin-top: 20px; }
+.session-usage .panel-heading { margin-bottom: 18px; }
+.session-usage td details { max-width: 250px; margin-top: 4px; overflow-wrap: anywhere; }
+.session-usage td summary { padding: 4px 0; font-size: 10px; }
 .metrics { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
 .metrics > div { border-left: 1px solid #dce2d4; padding-left: 15px; }
 .metrics > div:first-child { border-left: none; padding-left: 0; }
@@ -160,4 +170,6 @@ progress { width: 100%; height: 5px; accent-color: #819c61; }
 .access-page { max-width: 540px; margin: 15vh auto; padding: 24px; }
 .access-page .brand-mark { margin-bottom: 20px; }
 @media (max-width: 1200px) { .workspace.with-inspector { grid-template-columns: 230px minmax(0, 1fr); }.with-inspector .inspector-wrapper { position: fixed; z-index: 3; top: 64px; right: 0; width: min(500px, 52vw); box-shadow: -10px 0 30px #25371d15; } .main-content { padding: 20px 24px; } }
+@media (max-width: 1200px) { .workspace.without-sidebar.with-inspector { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 760px) { .header-actions { gap: 8px; } .app-header { min-height: 64px; height: auto; flex-wrap: wrap; gap: 8px; padding: 10px 15px; } }
 @media (max-width: 760px) { .workspace, .workspace.with-inspector { display: block; }.session-sidebar { position: static; height: auto; overflow: visible; border-right: 0; border-bottom: 1px solid #dfe3da; padding: 20px; }.source-list { max-height: 220px; overflow: auto; }.sidebar-heading { margin-top: 16px; }.main-content { padding: 18px; }.metrics { grid-template-columns: repeat(2, 1fr); row-gap: 20px; }.metrics > div:nth-child(3) { border: 0; padding-left: 0; }.with-inspector .inspector-wrapper { width: 100%; }.app-header { padding: 0 15px; }.local-indicator { font-size: 10px; }.brand strong { font-size: 12px; }.coverage-panel summary > span:last-child { float: none; display: block; margin-top: 5px; }.prompt-footer, .usage-footnote { flex-direction: column; }.empty-state { margin: 30px auto; }.empty-state h1 { font-size: 34px; }.coverage-counts { grid-template-columns: repeat(3, 1fr); } }
