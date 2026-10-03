@@ -175,6 +175,7 @@ export interface TimelinePage {
   maxEvents: number;
 }
 export type TimelineCategory = EventKind | 'user' | 'assistant' | 'instruction' | 'snapshot';
+export type TimelineFilter = 'all' | 'tools' | TimelineCategory;
 export interface TimelineBin {
   start: number;
   end: number;

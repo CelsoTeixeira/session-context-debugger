@@ -1,4 +1,8 @@
-import type { TimelineCategory, TimelineEvent } from './types.js';
+import type { TimelineCategory, TimelineEvent, TimelineFilter } from './types.js';
+
+export function timelineCategoryMatches(category: TimelineCategory, filter: TimelineFilter): boolean {
+  return filter === 'all' || (filter === 'tools' ? category === 'tool-call' || category === 'tool-result' : category === filter);
+}
 
 // Display groups describe recorded content, not delivery or active context.
 export function timelineCategory(event: TimelineEvent): TimelineCategory {

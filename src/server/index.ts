@@ -8,6 +8,7 @@ import { Sessions } from '../core/session.js';
 import { T3Catalog } from '../core/t3.js';
 import { T3Links } from '../core/t3-links.js';
 import { object, string } from '../core/json.js';
+import type { TimelineFilter } from '../core/types.js';
 
 const uiRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../ui');
 const STATIC_TYPES: Record<string, string> = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml' };
@@ -113,9 +114,9 @@ export async function createApp(roots?: string[]) {
         }
         if (route === 'events' && req.method === 'GET') {
           const after = Number(url.searchParams.get('after') ?? 0);
-          const filter = url.searchParams.get('kind') ?? 'all';
+          const filter = (url.searchParams.get('kind') ?? 'all') as TimelineFilter;
           if (!Number.isSafeInteger(after) || after < 0 || after > session.timeline.events.length) throw new DataError('invalid-cursor', 'Invalid timeline cursor.');
-          if (!['all', 'tools', 'message', 'reasoning', 'usage', 'attachment', 'lifecycle', 'metadata', 'unknown'].includes(filter)) throw new DataError('invalid-request', 'Invalid event kind.');
+          if (!['all', 'tools', 'user', 'instruction', 'assistant', 'message', 'tool-call', 'tool-result', 'reasoning', 'usage', 'snapshot', 'attachment', 'lifecycle', 'metadata', 'unknown'].includes(filter)) throw new DataError('invalid-request', 'Invalid event kind.');
           const view = url.searchParams.get('view');
           if (view !== null && view !== 'map') throw new DataError('invalid-request', 'Invalid timeline view.');
           if (view === 'map') return send(res, 200, { ok: true, data: session.timeline.map(filter) });

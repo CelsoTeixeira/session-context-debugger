@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import type { Overview, SourceRef, TimelineCategory, TimelineMap, TimelinePage } from '../core/types';
-import { timelineCategory } from '../core/timeline-category';
+import type { Overview, SourceRef, TimelineCategory, TimelineFilter, TimelineMap, TimelinePage } from '../core/types';
+import { timelineCategory, timelineCategoryMatches } from '../core/timeline-category';
 import { api } from './api';
 import { CategoryRanking, payloadSize } from './CategoryRanking';
 
@@ -12,7 +12,7 @@ const categories: Array<[TimelineCategory, string]> = [
 const categoryLabel = (category: TimelineCategory): string => categories.find(([key]) => key === category)![1];
 
 export function Timeline({ overview, onInspect }: { overview: Overview; onInspect: (ref: SourceRef) => void }) {
-  const [kind, setKind] = useState('all');
+  const [kind, setKind] = useState<TimelineFilter>('all');
   const [after, setAfter] = useState(0);
   const [page, setPage] = useState<TimelinePage>();
   const [map, setMap] = useState<TimelineMap>();
@@ -60,6 +60,11 @@ export function Timeline({ overview, onInspect }: { overview: Overview; onInspec
     setSelectedId(undefined);
     setAfter(position);
   }
+  function filterActivity(filter: TimelineFilter) {
+    focusOnLoad.current = false;
+    setKind(filter);
+    navigate(0);
+  }
   function move(direction: -1 | 1, focus = false) {
     if (!page || busy) return;
     const target = page.events[selectedIndex + direction];
@@ -73,8 +78,9 @@ export function Timeline({ overview, onInspect }: { overview: Overview; onInspec
   const windowEnd = page?.events.at(-1)?.position;
   return <section className="visual-timeline resource-panel" aria-label="Conversation timeline">
     <div className="content-heading"><div><div className="section-label">Conversation</div><h1>Explore the recording</h1></div><span className="muted">{map?.total.toLocaleString() ?? '…'} events indexed</span></div>
-    <p className="intro">Click a range, then an event. Colors describe captured activity; spacing follows recorded order, not elapsed time or token usage.</p>
-    <div className="timeline-legend" aria-label="Activity colors">{categories.map(([category, label]) => <span key={category}><i className="timeline-swatch" data-category={category} />{label}</span>)}</div>
+    <p className="intro">Click a type to filter, then a range and an event. Colors describe captured activity; spacing follows recorded order, not elapsed time or token usage. Filtering keeps the original positions.</p>
+    <div className="timeline-legend" aria-label="Filter activity type"><button aria-pressed={kind === 'all'} onClick={() => filterActivity('all')}>All activity</button>{categories.map(([category, label]) => <button key={category} data-category={category} aria-pressed={kind === category} onClick={() => filterActivity(kind === category ? 'all' : category)}><i className="timeline-swatch" />{label}</button>)}</div>
+    <p className="muted timeline-filter-status" role="status">{kind === 'all' ? 'Showing all activity' : 'Showing only ' + (kind === 'tools' ? 'tool calls and results' : categoryLabel(kind))}{map ? ' · ' + map.matching.toLocaleString() + ' matching events' : ' · loading…'}</p>
     <div className="timeline-overview-panel">
       <div className="panel-heading"><h2>Session overview</h2><span className="muted">{map?.bins.length ? 'Each column groups nearby events' : 'Loading overview…'}</span></div>
       {mapError ? <p className="error" role="alert">{mapError}</p> : null}
@@ -83,13 +89,13 @@ export function Timeline({ overview, onInspect }: { overview: Overview; onInspec
           let y = 0;
           const inWindow = windowStart !== undefined && windowEnd !== undefined && bin.start <= windowEnd && bin.end > windowStart;
           const description = 'Events ' + (bin.start + 1) + '–' + bin.end + ', lines ' + bin.firstLine + '–' + bin.lastLine
-            + '. ' + Object.entries(bin.counts).map(([category, count]) => categoryLabel(category as TimelineCategory) + ': ' + count).join(', ');
+            + '. ' + (Object.entries(bin.counts).filter(([category]) => timelineCategoryMatches(category as TimelineCategory, kind)).map(([category, count]) => categoryLabel(category as TimelineCategory) + ': ' + count).join(', ') || 'No matching events');
           return <button key={bin.start} className={'timeline-bin ' + (inWindow ? 'in-window' : '')} title={description} aria-label={description} aria-pressed={inWindow}
             disabled={!bin.matching || busy} onClick={() => navigate(bin.firstMatch!)}>
             <svg viewBox={'0 0 10 ' + (bin.end - bin.start)} preserveAspectRatio="none" aria-hidden="true">{categories.map(([category]) => {
               const count = bin.counts[category] ?? 0;
               const start = y; y += count;
-              return count ? <rect key={category} x="0" y={start} width="10" height={count} data-category={category} /> : null;
+              return count && timelineCategoryMatches(category, kind) ? <rect key={category} x="0" y={start} width="10" height={count} data-category={category} /> : null;
             })}</svg>
           </button>;
         })}
@@ -98,8 +104,8 @@ export function Timeline({ overview, onInspect }: { overview: Overview; onInspec
     </div>
     <CategoryRanking ranking={map?.ranking} labels={categories} omitted={map?.omitted ?? 0} onInspect={onInspect} />
     <div className="timeline-toolbar">
-      <div><label htmlFor="timeline-kind">Show activity</label>{' '}<select id="timeline-kind" value={kind} onChange={event => { setKind(event.target.value); navigate(0); }}>
-        <option value="all">All records</option><option value="message">Messages</option><option value="tools">Tool calls and results</option><option value="reasoning">Captured reasoning</option><option value="usage">Usage observations</option><option value="attachment">Attachments and snapshots</option><option value="lifecycle">Lifecycle</option><option value="metadata">Metadata</option><option value="unknown">Unknown and limited records</option>
+      <div><label htmlFor="timeline-kind">Show activity</label>{' '}<select id="timeline-kind" value={kind} onChange={event => filterActivity(event.target.value as TimelineFilter)}>
+        <option value="all">All activity</option><option value="tools">Tool calls and results</option>{categories.map(([category, label]) => <option key={category} value={category}>{label}</option>)}
       </select></div>
       <div className="pager"><button disabled={!after || busy} onClick={() => navigate(0)}>Start</button><button disabled={page?.before === undefined || busy} onClick={() => navigate(page!.before!)}>Previous range</button><button disabled={page?.after === undefined || busy} onClick={() => navigate(page!.after!)}>Next range →</button></div>
     </div>
@@ -124,7 +130,7 @@ export function Timeline({ overview, onInspect }: { overview: Overview; onInspec
         {selected.preview ? <p className="timeline-preview">{selected.preview}{selected.previewLimited ? '\n[Preview shortened; inspect source to continue.]' : ''}</p> : <p className="muted">Open the source to read the captured fields.</p>}
         <p className="muted">{selected.detail}</p>
         <p className="muted">Captured field size: {selected.serializedBytes === null ? 'Unknown' : payloadSize(selected.serializedBytes)} after compact JSON encoding.{selected.allocatedBytes !== null && selected.allocatedBytes !== selected.serializedBytes ? ' Ranking allocates ' + payloadSize(selected.allocatedBytes) + ' here; overlapping captured fields share bytes once.' : ''}</p>
-        <div className="pager timeline-related"><button onClick={() => onInspect(selected.ref)}>Inspect source ↗</button>{selected.related?.map((ref, i) => <button key={ref.id + ':' + ref.pointer + ':' + i} onClick={() => navigate(selected.relatedPositions![i]!)}>Go to {selected.kind === 'tool-call' ? 'result' : 'call'} · line {ref.line}</button>)}</div>
+        <div className="pager timeline-related"><button onClick={() => onInspect(selected.ref)}>Inspect source ↗</button>{selected.related?.map((ref, i) => <button key={ref.id + ':' + ref.pointer + ':' + i} onClick={() => { if (kind !== 'all' && kind !== 'tools') setKind('all'); navigate(selected.relatedPositions![i]!); }}>Go to {selected.kind === 'tool-call' ? 'result' : 'call'} · line {ref.line}</button>)}</div>
         <details className="timeline-identities"><summary>Recorded time and identifiers</summary><span className="path">Time: {selected.timestamp ?? 'unknown'}<br />Actor: {selected.actorId}<br />Recorded ID: {selected.recordedId ?? 'unknown'}<br />Tool ID: {selected.toolId ?? 'unknown'}</span></details>
       </article> : null}
       <p className="muted timeline-coverage">{page.complete ? 'Event coverage complete within this snapshot.' : 'Event coverage incomplete; see source coverage below.'} Index limit: {page.maxEvents.toLocaleString()} events.{page.omitted ? ' Additional event/record captures omitted: ' + page.omitted.toLocaleString() + '.' : ''} Snapshots, runtime copies, and unknown records remain separate evidence. Missing reasoning does not mean none occurred.</p>

@@ -1,13 +1,12 @@
 import { array, identifier, object } from './json.js';
-import { timelineCategory } from './timeline-category.js';
+import { timelineCategory, timelineCategoryMatches } from './timeline-category.js';
 import { measureCaptures } from './payload-size.js';
 import type { Obj } from './json.js';
-import type { EventKind, RecordMeta, SourceFile, TimelineEvent, TimelineMap, TimelinePage } from './types.js';
+import type { EventKind, RecordMeta, SourceFile, TimelineEvent, TimelineFilter, TimelineMap, TimelinePage } from './types.js';
 
 const MAX_EVENTS = 40_000;
 const PREVIEW = 256;
-const matches = (event: TimelineEvent, filter: string): boolean => filter === 'all'
-  || (filter === 'tools' ? event.kind === 'tool-call' || event.kind === 'tool-result' : event.kind === filter);
+const matches = (event: TimelineEvent, filter: TimelineFilter): boolean => timelineCategoryMatches(timelineCategory(event), filter);
 
 // Only small metadata and previews survive the scan. Bodies stay behind refs.
 export class Timeline {
@@ -145,7 +144,7 @@ export class Timeline {
     }
     measureCaptures(record, this.events.slice(start));
   }
-  page(after: number, filter: string, scanComplete: boolean): TimelinePage {
+  page(after: number, filter: TimelineFilter, scanComplete: boolean): TimelinePage {
     const events: TimelineEvent[] = [];
     let position = after;
     for (; position < this.events.length && events.length < 50; position++) {
@@ -166,7 +165,7 @@ export class Timeline {
     return { events, before, after: position < this.events.length ? position : undefined, total: this.events.length, omitted: this.omitted,
       complete: scanComplete && !this.omitted, maxEvents: MAX_EVENTS };
   }
-  map(filter: string): TimelineMap {
+  map(filter: TimelineFilter): TimelineMap {
     const bins: TimelineMap['bins'] = [];
     const ranking = new Map<string, TimelineMap['ranking'][number]>();
     const width = Math.max(1, Math.ceil(this.events.length / 120));
