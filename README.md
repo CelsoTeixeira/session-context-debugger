@@ -6,6 +6,16 @@ The source picker defaults to T3 Code, with Claude and Codex recording views ava
 
 Recorded content, diagnostic snapshots, request inclusion, and active-context evidence retain separate meanings. A prompt snapshot is diagnostic evidence; it does not add another injection. Provider usage is reconciled by actor-scoped recorded identity, with conflicts excluded from resolved totals. Payload bytes do not claim exact token attribution.
 
+## Explore a recording
+
+- Selecting a recording hides the session picker. Use **Select session** in the header to reopen it.
+- Input, output, cache-read, and cache-creation subtotals stay above the timeline. Each metric shows measurement coverage; unknown fields stay unknown. These are cumulative provider-reported usage in the selected recording, not current context size, billing, or complete T3 history.
+- **Visual timeline** shows recorded ranges, event markers, and one selected event. Click a colored type to show only that category. Click it again or **All activity** to clear the filter. The dropdown uses the same selection and also offers combined tool calls/results. Filtering preserves original positions; spacing describes recorded order, not elapsed time or tokens.
+- Tool counterpart links use recorded IDs within an actor. Jumping to the opposite event clears a single-type filter so the target remains visible. Ambiguous/orphan pairings and coverage limits remain explicit.
+- **Category ranking** compares compact JSON UTF-8 bytes of captured fields or event counts, with separate evidence views and source links. It covers the whole retained index independently of the timeline filter. Nested captures share byte allocation within one record; copies in other records remain separate. Shares cover measured bytes only. These sizes are not raw log storage, category token counts, or proof of active context.
+- Open **Usage and input-token ranking** below the recording view for source-linked responses, sorted by input tokens by default or by source order. Sorting covers the retained response set before paging. Unknown/conflicting input measurements stay unranked. Closing and reopening preserves order and page; a new recording starts with the panel closed.
+- **Beginning and instructions** retains first-input and captured startup evidence. **Inspect source** opens hash-validated raw records or selected fields in bounded ranges.
+
 ## Local use
 
 Requires Node 22.12 or later.
@@ -32,11 +42,13 @@ T3 catalog rows and provider JSONL records retain separate evidence references. 
 
 ## Current scope and limits
 
-This is the Beginning slice. Full conversation/tool navigation, context/compaction charts, diagnostics, child navigation, and enriched discovery/refresh are subsequent increments.
+Beginning and T3 discovery are implemented with scoped verification. Conversation/tool browsing, clickable visual navigation, recorded usage subtotals/response ranking, and captured payload category ranking are usable increments. The broader milestones remain in progress: model-call navigation, literal source search, child-session navigation, compaction/context charts, duplication/exposure diagnostics, and enriched discovery/refresh are still pending.
 
 - Raw scanning uses UTF-8 byte offsets, physical LF/CRLF delimiters, and SHA-256 record hashes. An unterminated tail remains pending.
 - Normalization is capped at 8 MiB per record; larger records keep raw byte references and range access.
 - One selected in-memory index retains at most 100,000 record references, 3,000 evidence items, and 20,000 call groups. Deliberate limits remain visible in coverage.
+- The timeline retains at most 40,000 events, renders at most 120 overview groups and 50 events per range, and exposes omitted captures. Captured reasoning is shown only where recorded; missing reasoning is not proof that none occurred.
+- Usage details return 20 response groups per page. Matching repeated measurements count once; conflicting or unassigned groups stay outside resolved subtotals. Claude input includes uncached input plus cache read and creation only when all required fields are known; Codex cache read is part of reported input.
 - Source views return up to 32 KiB at a time after validating the entire referenced record. Large-record access can therefore take time.
 - The source list reads file stats only, with a four-second/20,000-file budget. A partial list states its limits; ordering is recent within inspected candidates.
 - T3 lists up to 50 current non-deleted threads per live page, including archived threads. Titles/project names and workspace paths use 512/2,048-character display prefixes. Catalog pages can change while T3 runs.
