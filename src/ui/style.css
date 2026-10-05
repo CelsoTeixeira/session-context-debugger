@@ -5,7 +5,7 @@ button, input, textarea, select { font: inherit; }
 button { cursor: pointer; border: 1px solid #dce0d8; background: #fff; border-radius: 6px; color: #36463b; padding: 6px 10px; transition: background 120ms; }
 button:hover { background: #edf2e8; }
 button:disabled { cursor: default; opacity: .5; }
-button:focus-visible, textarea:focus-visible, select:focus-visible, summary:focus-visible { outline: 2px solid #729953; outline-offset: 3px; }
+button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible, summary:focus-visible { outline: 2px solid #729953; outline-offset: 3px; }
 h1, h2, p { margin-top: 0; }
 h1 { font-size: 27px; line-height: 1.25; letter-spacing: -.8px; font-weight: 600; margin-bottom: 10px; }
 h2 { font-size: 14px; font-weight: 650; margin: 0; }
@@ -160,6 +160,18 @@ th { font-weight: 600; color: #77856c; text-align: left; }
 td, th { border-bottom: 1px solid #e2e7db; padding: 8px 5px; vertical-align: top; }
 td button { font-size: 10px; padding: 3px 6px; white-space: nowrap; }
 .pager { display: flex; gap: 8px; }
+.source-search { border: 1px solid #dce2d4; border-radius: 6px; background: #fff; padding: 16px; margin: 16px 0 22px; }
+.source-search label { display: block; font-size: 12px; font-weight: 600; margin-bottom: 8px; }
+.source-search-controls { display: flex; flex-wrap: wrap; gap: 8px; }
+.source-search-controls input { flex: 1 1 260px; min-width: 0; width: 100%; }
+.search-method, .search-result .muted { font-size: 10px; line-height: 1.6; }
+.search-query { font-size: 11px; overflow-wrap: anywhere; margin: 14px 0 8px; }
+.search-query code { white-space: pre-wrap; }
+.search-progress { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; font-size: 11px; margin: 16px 0 8px; }
+.search-result { border-top: 1px solid #e2e7db; padding: 14px 0; min-width: 0; }
+.search-result .panel-heading { flex-wrap: wrap; gap: 6px; font-size: 11px; }
+.search-result pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 11px; background: #f7f9f3; border-radius: 4px; padding: 10px; }
+.search-result .pager { flex-wrap: wrap; }
 .pager button { font-size: 11px; }
 .warnings { background: #f4efdf; border-radius: 5px; margin-top: 16px; color: #7d6939; }
 .warnings ul { font-size: 11px; padding: 0 20px 15px 30px; }

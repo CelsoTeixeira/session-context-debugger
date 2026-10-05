@@ -174,6 +174,10 @@ export class Timeline {
       omitted: Math.max(0, related.length - 20),
     };
   }
+  recordTarget(refId: string): { id: string; position: number } | undefined {
+    const event = this.records.get(refId)?.[0];
+    return event ? { id: event.id, position: event.position } : undefined;
+  }
   page(after: number, filter: TimelineFilter, scanComplete: boolean): TimelinePage {
     const events: TimelineEvent[] = [];
     let position = after;

@@ -2,9 +2,9 @@ import { useEffect, useState } from 'react';
 import type { RecordView, SourceRef } from '../core/types';
 import { api } from './api';
 
-export function EvidenceInspector({ sessionId, ref }: { sessionId: string; ref: SourceRef }) {
+export function EvidenceInspector({ sessionId, ref, initialOffset = 0 }: { sessionId: string; ref: SourceRef; initialOffset?: number }) {
   const [view, setView] = useState<RecordView>();
-  const [offset, setOffset] = useState(0);
+  const [offset, setOffset] = useState(initialOffset);
   const [raw, setRaw] = useState(!ref.pointer);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);

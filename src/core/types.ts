@@ -78,6 +78,24 @@ export interface UsageJump {
   status: ModelCall['status'];
   identityDetail: string;
 }
+export interface SearchMatch {
+  ref: SourceRef;
+  matchOffset: number;
+  preview: string;
+  pending: boolean;
+  target?: { id: string; position: number };
+}
+export interface SearchView {
+  id: string;
+  query: string;
+  state: 'searching' | 'complete' | 'cancelled' | 'limited' | 'error';
+  scannedBytes: number;
+  snapshotBytes: number;
+  scannedRecords: number;
+  matches: SearchMatch[];
+  maxMatches: number;
+  detail: string;
+}
 export interface RecordMeta {
   ref: SourceRef;
   outerType: string;

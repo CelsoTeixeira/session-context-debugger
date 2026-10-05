@@ -3,6 +3,7 @@ import type { Overview, SourceRef, TimelineCategory, TimelineFilter, TimelineMap
 import { timelineCategory, timelineCategoryMatches } from '../core/timeline-category';
 import { api } from './api';
 import { CategoryRanking, payloadSize } from './CategoryRanking';
+import { SourceSearch } from './SourceSearch';
 
 const categories: Array<[TimelineCategory, string]> = [
   ['user', 'User input'], ['instruction', 'Instructions'], ['assistant', 'Assistant'], ['message', 'Other message'],
@@ -11,7 +12,7 @@ const categories: Array<[TimelineCategory, string]> = [
 ];
 const categoryLabel = (category: TimelineCategory): string => categories.find(([key]) => key === category)![1];
 
-export function Timeline({ overview, onInspect, usageJump }: { overview: Overview; onInspect: (ref: SourceRef) => void; usageJump?: UsageJump }) {
+export function Timeline({ overview, onInspect, onSourceNavigate, usageJump }: { overview: Overview; onInspect: (ref: SourceRef, offset?: number) => void; onSourceNavigate: () => void; usageJump?: UsageJump }) {
   const [kind, setKind] = useState<TimelineFilter>('all');
   const [after, setAfter] = useState(0);
   const [page, setPage] = useState<TimelinePage>();
@@ -73,7 +74,7 @@ export function Timeline({ overview, onInspect, usageJump }: { overview: Overvie
         requestedEvent.current = undefined;
         if (requested && !value.events.some(event => event.id === requested)) {
           focusOnLoad.current = false;
-          setError('The selected response target is unavailable within this timeline range. Inspect its usage source instead.');
+          setError('The selected target is unavailable within this timeline range. Inspect its source instead.');
         }
         setSelectedId(old => requested && value.events.some(event => event.id === requested) ? requested
           : value.events.some(event => event.id === old) ? old : (edge.current === 'last' ? value.events.at(-1) : value.events[0])?.id);
@@ -139,6 +140,7 @@ export function Timeline({ overview, onInspect, usageJump }: { overview: Overvie
       </div>
       <div className="timeline-scale"><span>Recording start</span><span>{map ? map.matching.toLocaleString() + ' events match the filter' : ''}</span><span>Latest indexed event</span></div>
     </div>
+    <SourceSearch overview={overview} onInspect={onInspect} onNavigate={match => { if (match.target) { onSourceNavigate(); setActiveUsage(undefined); jumpTo(match.target.id, match.target.position); } }} />
     <CategoryRanking ranking={map?.ranking} labels={categories} omitted={map?.omitted ?? 0} onInspect={onInspect} />
     <div className="timeline-toolbar">
       <div><label htmlFor="timeline-kind">Show activity</label>{' '}<select id="timeline-kind" value={kind} onChange={event => filterActivity(event.target.value as TimelineFilter)}>

@@ -87,11 +87,20 @@ export async function createApp(roots?: string[]) {
           const session = await sessions.open(path, controller.signal);
           return send(res, 202, { ok: true, data: { id: session.id } });
         }
-        const match = /^\/api\/sessions\/([0-9a-f-]+)\/(overview|events|usage|ledger|cancel|records(?:\/r\d+)?)$/.exec(url.pathname);
+        const match = /^\/api\/sessions\/([0-9a-f-]+)\/(overview|events|usage|ledger|cancel|search(?:\/cancel)?|records(?:\/r\d+)?)$/.exec(url.pathname);
         if (!match || !uuid.test(match[1] ?? '')) throw new DataError('not-found', 'API route unavailable.', 404);
         const session = sessions.get(match[1]!);
         const route = match[2]!;
         if (route === 'overview' && req.method === 'GET') return send(res, 200, { ok: true, data: session.overview() });
+        if (route === 'search' && req.method === 'POST') {
+          const body = await readBody(req);
+          return send(res, 202, { ok: true, data: session.startSearch(string(body.query) ?? '') });
+        }
+        if (route === 'search' && req.method === 'GET') return send(res, 200, { ok: true, data: session.searchView(url.searchParams.get('id') ?? '') });
+        if (route === 'search/cancel' && req.method === 'POST') {
+          const body = await readBody(req);
+          return send(res, 200, { ok: true, data: session.cancelSearch(string(body.id) ?? '') });
+        }
         if (route === 'usage' && req.method === 'GET') {
           const after = Number(url.searchParams.get('after') ?? 0);
           const order = url.searchParams.get('order') ?? 'source';

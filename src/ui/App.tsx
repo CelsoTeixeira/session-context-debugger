@@ -26,6 +26,7 @@ export function App() {
   const [sessionId, setSessionId] = useState('');
   const [overview, setOverview] = useState<Overview>();
   const [selectedRef, setSelectedRef] = useState<SourceRef>();
+  const [selectedOffset, setSelectedOffset] = useState(0);
   const [error, setError] = useState('');
   const [listingBusy, setListingBusy] = useState(false);
   const [opening, setOpening] = useState(false);
@@ -46,7 +47,7 @@ export function App() {
     setError('');
     setSidebarOpen(true);
   }
-  function inspect(ref: SourceRef) { setDatabaseRef(undefined); setSelectedRef(ref); }
+  function inspect(ref: SourceRef, offset = 0) { setDatabaseRef(undefined); setSelectedOffset(offset); setSelectedRef(ref); }
   function inspectDatabase(ref: DatabaseRef) { setSelectedRef(undefined); setDatabaseRef(ref); }
   function changeMode(value: SourceMode) {
     listController.current?.abort();
@@ -208,12 +209,12 @@ export function App() {
           <SessionUsageSummary overview={overview} />
           <div className="segmented session-view" aria-label="Recording view"><button className={sessionView === 'timeline' ? 'selected' : ''} aria-pressed={sessionView === 'timeline'} onClick={() => setSessionView('timeline')}>Visual timeline</button><button className={sessionView === 'beginning' ? 'selected' : ''} aria-pressed={sessionView === 'beginning'} onClick={() => setSessionView('beginning')}>Beginning and instructions</button></div>
           <div hidden={sessionView !== 'beginning'}><Beginning overview={overview} onInspect={inspect} /></div>
-          <div hidden={sessionView !== 'timeline'}><Timeline key={'timeline:' + overview.id} overview={overview} onInspect={inspect} usageJump={usageJump} /></div>
+          <div hidden={sessionView !== 'timeline'}><Timeline key={'timeline:' + overview.id} overview={overview} onInspect={inspect} onSourceNavigate={() => { setSelectedRef(undefined); setDatabaseRef(undefined); }} usageJump={usageJump} /></div>
           <SessionUsage key={'usage:' + overview.id} overview={overview} onInspect={inspect} onNavigate={jump => { setSelectedRef(undefined); setDatabaseRef(undefined); setSessionView('timeline'); setUsageJump(jump); }} />
           <Coverage key={overview.id} overview={overview} onInspect={inspect} />
         </> : !resolution && !opening ? <div className="empty-state"><div className="section-label">A recording, with its receipts</div><h1>Start at the beginning.</h1><p>{mode === 't3' ? 'Select a T3 thread to inspect its current provider binding and a verified linked recording.' : 'Select a recording to inspect the first input, captured instructions, diagnostic snapshots, and provider-reported usage.'}</p><div className="empty-rule" /><p className="muted">Recorded data, request payloads, active-context evidence, and unknowns keep their own meaning.</p></div> : null}
       </main>
-      {overview && selectedRef ? <div className="inspector-wrapper"><button className="inspector-close" onClick={() => setSelectedRef(undefined)} aria-label="Close source inspector">×</button><EvidenceInspector key={overview.id + ':' + selectedRef.id + ':' + selectedRef.pointer} sessionId={overview.id} ref={selectedRef} /></div> : null}
+      {overview && selectedRef ? <div className="inspector-wrapper"><button className="inspector-close" onClick={() => setSelectedRef(undefined)} aria-label="Close source inspector">×</button><EvidenceInspector key={overview.id + ':' + selectedRef.id + ':' + selectedRef.pointer + ':' + selectedOffset} sessionId={overview.id} ref={selectedRef} initialOffset={selectedOffset} /></div> : null}
       {databaseRef ? <div className="inspector-wrapper"><button className="inspector-close" onClick={() => setDatabaseRef(undefined)} aria-label="Close source inspector">×</button><DatabaseInspector key={databaseRef.id} reference={databaseRef} /></div> : null}
     </div>
   </>;

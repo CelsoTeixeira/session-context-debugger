@@ -7,9 +7,10 @@ import { identifier, object } from './json.js';
 import { Normalizer } from './normalize.js';
 import { Timeline } from './timeline.js';
 import { summarizeUsage } from './usage.js';
+import { SourceSearch } from './search.js';
 import { MAX_ITEMS, MAX_RECORDS, PARSE_BYTES, PREVIEW_UNITS, scan } from './scanner.js';
 import { abortIfNeeded, DataError, Sources } from './source.js';
-import type { CoverageLedger, Overview, RecordMeta, RecordView, SourceFile, SourceRef } from './types.js';
+import type { CoverageLedger, Overview, RecordMeta, RecordView, SearchView, SourceFile, SourceRef } from './types.js';
 
 const ledger = (bytes: number): CoverageLedger => ({
   inspectedBytes: bytes, scannedBytes: 0, completeLines: 0, pendingBytes: 0,
@@ -32,6 +33,7 @@ export class Session {
   error?: string;
   done?: Promise<void>;
   linkedIdentity?: SourceRef;
+  private search?: SourceSearch;
   constructor(readonly source: SourceFile, readonly sources: Sources) {
     this.normalizer = new Normalizer(source);
     this.timeline = new Timeline(source);
@@ -126,7 +128,8 @@ export class Session {
     };
   }
   async record(refId: string, pointer: string | undefined, offset: number, signal?: AbortSignal): Promise<RecordView> {
-    const record = this.records.get(refId);
+    const searchRef = this.search?.record(refId)?.ref;
+    const record = this.records.get(refId) ?? (searchRef ? { ref: searchRef } : undefined);
     if (!record) throw new DataError('unavailable-source', 'Record is outside the retained index or unavailable.', 404);
     if (!Number.isSafeInteger(offset) || offset < 0 || offset > record.ref.byteLength && !pointer) {
       throw new DataError('invalid-range', 'Invalid record range.');
@@ -184,6 +187,24 @@ export class Session {
         nextOffset: offset + slice.length < record.ref.byteLength ? offset + slice.length : undefined,
         limited: offset > 0 || offset + slice.length < record.ref.byteLength, validated: true };
     } finally { parsedParts = []; rawParts = []; await handle.close(); }
+  }
+  startSearch(query: string): SearchView {
+    if (this.state !== 'ready' || !this.coverage.prefixSha256) throw new DataError('not-ready', 'Wait for indexing to finish before searching.', 409);
+    const search = new SourceSearch(query, this.source);
+    this.search?.controller.abort();
+    this.search = search;
+    search.done = search.run(this.source, this.records, this.coverage.prefixSha256, this.controller.signal,
+      async () => (await this.sources.resolve(this.source.resolvedPath)).path);
+    return this.searchView(search.view.id);
+  }
+  searchView(id: string): SearchView {
+    if (!this.search || this.search.view.id !== id) throw new DataError('unavailable-search', 'Search was replaced or is unavailable.', 404);
+    return { ...this.search.view, matches: this.search.view.matches.map(match => ({ ...match, target: this.timeline.recordTarget(match.ref.id) })) };
+  }
+  cancelSearch(id: string): SearchView {
+    this.searchView(id);
+    this.search!.controller.abort();
+    return this.searchView(id);
   }
 }
 

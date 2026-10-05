@@ -14,6 +14,7 @@ export async function scan(
   onRecord: (record: ScannedRecord) => void,
   onProgress: (bytes: number) => void,
   signal?: AbortSignal,
+  options?: { capture?: boolean; onPart?: (bytes: Buffer, line: number, offset: number) => void },
 ): Promise<string> {
   const handle = await open(source.resolvedPath, 'r');
   const prefixHash = createHash('sha256');
@@ -27,11 +28,12 @@ export async function scan(
   let position = 0;
   const append = (part: Buffer): void => {
     if (!part.length) return;
+    options?.onPart?.(part, line, lineLength);
     if (lastByte !== undefined) lineHash.update(Buffer.from([lastByte]));
     if (part.length > 1) lineHash.update(part.subarray(0, -1));
     lastByte = part[part.length - 1];
     lineLength += part.length;
-    if (capturedLength <= PARSE_BYTES) {
+    if (options?.capture !== false && capturedLength <= PARSE_BYTES) {
       const capture = part.subarray(0, Math.max(0, PARSE_BYTES + 1 - capturedLength));
       parts.push(Buffer.from(capture));
       capturedLength += capture.length;
@@ -46,7 +48,7 @@ export async function scan(
       offset: lineOffset, byteLength, delimiterLength: pending ? 0 : crlf ? 2 : 1,
       sha256: lineHash.digest('hex'),
     };
-    const bytes = byteLength <= PARSE_BYTES ? Buffer.concat(parts).subarray(0, byteLength) : undefined;
+    const bytes = options?.capture !== false && byteLength <= PARSE_BYTES ? Buffer.concat(parts).subarray(0, byteLength) : undefined;
     onRecord({ ref, bytes, pending });
     lineOffset += lineLength + (pending ? 0 : 1);
     line++;
