@@ -48,9 +48,12 @@ export function SourceSearch({ overview, onInspect, onNavigate }: {
     try { await api(endpoint + '/cancel', { method: 'POST', body: JSON.stringify({ id: view.id }) }); }
     catch (error) { setError((error as Error).message); }
   }
-  return <section className="source-search" aria-label="Search selected recording">
+  const status = view ? (view.state === 'searching' ? 'Searching…' : view.state === 'complete' ? 'Complete' : view.state === 'cancelled' ? 'Cancelled · incomplete' : view.state === 'limited' ? 'Limited · incomplete' : 'Failed') + ' · ' + view.matches.length + ' matching lines' : 'Raw JSONL';
+  return <details className="source-search collapsible-panel" aria-label="Search selected recording">
+    <summary>Search this recording <span className="muted">{status}</span></summary>
+    <div className="panel-content">
     <form onSubmit={event => { event.preventDefault(); void start(); }}>
-      <label htmlFor="source-search-query">Search this recording</label>
+      <label htmlFor="source-search-query">Literal text</label>
       <div className="source-search-controls"><input id="source-search-query" type="search" value={query} maxLength={256} placeholder="AGENTS.md, a tool name, or literal text" onChange={event => setQuery(event.target.value)} />
         <button type="submit" disabled={!query.length || starting || overview.state !== 'ready'}>{starting ? 'Starting…' : 'Search raw source'}</button>
         {view?.state === 'searching' ? <button type="button" onClick={() => void cancel()}>Cancel search</button> : null}
@@ -74,5 +77,6 @@ export function SourceSearch({ overview, onInspect, onNavigate }: {
       </article>)}
       {shown < view.matches.length ? <button onClick={() => setShown(value => value + 10)}>Show more matches ({view.matches.length - shown})</button> : null}
     </div> : null}
-  </section>;
+    </div>
+  </details>;
 }

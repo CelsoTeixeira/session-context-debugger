@@ -161,6 +161,11 @@ td, th { border-bottom: 1px solid #e2e7db; padding: 8px 5px; vertical-align: top
 td button { font-size: 10px; padding: 3px 6px; white-space: nowrap; }
 .pager { display: flex; gap: 8px; }
 .source-search { border: 1px solid #dce2d4; border-radius: 6px; background: #fff; padding: 16px; margin: 16px 0 22px; }
+.collapsible-panel.category-ranking, .collapsible-panel.source-search { padding: 0; }
+.collapsible-panel > summary { font-weight: 650; }
+.collapsible-panel > summary .muted { float: right; font-size: 10px; font-weight: 400; }
+.collapsible-panel > .panel-content { padding: 0 16px 16px; }
+@media (max-width: 760px) { .collapsible-panel > summary .muted { float: none; display: block; margin: 4px 0 0 14px; } .collapsible-panel > .panel-content { padding: 0 12px 12px; } }
 .source-search label { display: block; font-size: 12px; font-weight: 600; margin-bottom: 8px; }
 .source-search-controls { display: flex; flex-wrap: wrap; gap: 8px; }
 .source-search-controls input { flex: 1 1 260px; min-width: 0; width: 100%; }

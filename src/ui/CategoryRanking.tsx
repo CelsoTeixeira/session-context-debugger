@@ -15,8 +15,9 @@ export function CategoryRanking({ ranking, labels, omitted, onInspect }: {
   const total = rows.reduce((sum, row) => sum + row[metric], 0);
   const max = Math.max(1, ...rows.map(row => row[metric]));
   const unknown = rows.reduce((sum, row) => sum + row.events - row.measuredEvents, 0);
-  return <section className="category-ranking" aria-label="Category ranking">
-    <div className="panel-heading"><h2>Category ranking</h2><span className="muted">Whole retained index</span></div>
+  return <details className="category-ranking collapsible-panel" aria-label="Category ranking">
+    <summary>Category ranking <span className="muted">Whole retained index</span></summary>
+    <div className="panel-content">
     <div className="ranking-controls"><label>Compare <select value={metric} onChange={event => setMetric(event.target.value as typeof metric)}><option value="bytes">Serialized payload bytes</option><option value="events">Number of events</option></select></label>
       <label>Evidence view <select value={representation} onChange={event => setRepresentation(event.target.value as typeof representation)}><option value="primary">Primary captures</option><option value="metadata">Runtime and configuration</option><option value="diagnostic-snapshot">Diagnostic snapshots</option><option value="unknown">Unclassified captures</option><option value="mirror">Recorded mirrors</option></select></label></div>
     {!ranking ? <p className="notice">Loading category sizes…</p> : !rows.length ? <p className="notice">No retained captures in this evidence view.</p> : rows.map((row, index) => {
@@ -30,5 +31,6 @@ export function CategoryRanking({ ranking, labels, omitted, onInspect }: {
       </div>;
     })}
     <p className="muted ranking-method">Size is UTF-8 bytes after compact JSON encoding of captured fields, including encoded media. Shares cover measured bytes only; unknown sizes are marked separately. Overlapping fields in one record share bytes once. Copies in other records remain separate in their evidence views. This is not a token ranking, raw log storage size, or proof of active context. {unknown ? unknown.toLocaleString() + ' captures in this view have unknown sizes. ' : ''}{omitted ? 'Additional captures exceed the index limit. ' : ''}See source coverage below.</p>
-  </section>;
+    </div>
+  </details>;
 }
