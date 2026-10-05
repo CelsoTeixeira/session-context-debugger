@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import type { Overview, SourceRef, TimelineCategory, TimelineFilter, TimelineMap, TimelinePage } from '../core/types';
+import type { Overview, SourceRef, TimelineCategory, TimelineFilter, TimelineMap, TimelinePage, UsageJump } from '../core/types';
 import { timelineCategory, timelineCategoryMatches } from '../core/timeline-category';
 import { api } from './api';
 import { CategoryRanking, payloadSize } from './CategoryRanking';
@@ -11,7 +11,7 @@ const categories: Array<[TimelineCategory, string]> = [
 ];
 const categoryLabel = (category: TimelineCategory): string => categories.find(([key]) => key === category)![1];
 
-export function Timeline({ overview, onInspect }: { overview: Overview; onInspect: (ref: SourceRef) => void }) {
+export function Timeline({ overview, onInspect, usageJump }: { overview: Overview; onInspect: (ref: SourceRef) => void; usageJump?: UsageJump }) {
   const [kind, setKind] = useState<TimelineFilter>('all');
   const [after, setAfter] = useState(0);
   const [page, setPage] = useState<TimelinePage>();
@@ -20,18 +20,47 @@ export function Timeline({ overview, onInspect }: { overview: Overview; onInspec
   const [error, setError] = useState('');
   const [mapError, setMapError] = useState('');
   const [busy, setBusy] = useState(false);
+  const [activeUsage, setActiveUsage] = useState<UsageJump>();
+  const [jumpRevision, setJumpRevision] = useState(0);
+  const requestedEvent = useRef<string | undefined>(undefined);
   const edge = useRef<'first' | 'last'>('first');
   const focusOnLoad = useRef(false);
   const loadedCursor = useRef(-1);
   const markers = useRef<HTMLDivElement>(null);
   const selected = page?.events.find(event => event.id === selectedId) ?? page?.events[0];
   const selectedIndex = page?.events.findIndex(event => event.id === selected?.id) ?? -1;
+  function jumpTo(id: string, position: number) {
+    // Clear any blocking filter and include nearby records without assigning
+    // them to a request. A revision also reloads repeated same-range jumps.
+    setKind('all');
+    navigate(Math.max(0, position - 10));
+    requestedEvent.current = id;
+    focusOnLoad.current = true;
+    setJumpRevision(value => value + 1);
+  }
   useEffect(() => {
-    if (focusOnLoad.current && selected && loadedCursor.current === after) {
-      markers.current?.querySelector<HTMLButtonElement>('[data-position="' + selected.position + '"]')?.focus();
-      focusOnLoad.current = false;
+    if (!usageJump || usageJump.sessionId !== overview.id) return;
+    setActiveUsage(usageJump);
+    jumpTo(usageJump.navigation.target.id, usageJump.navigation.target.position);
+  }, [usageJump, overview.id]);
+  useEffect(() => {
+    // The overview/ranking can change height when a filter clears. Wait for
+    // that layout before scrolling to the selected marker.
+    if (focusOnLoad.current && selected && loadedCursor.current === after && (map || mapError)) {
+      const marker = markers.current?.querySelector<HTMLButtonElement>('[data-position="' + selected.position + '"]');
+      // Let the restored range and usage panel paint before browser scroll
+      // anchoring runs; otherwise the first jump can shift below the viewport.
+      let frame = requestAnimationFrame(() => {
+        frame = requestAnimationFrame(() => {
+          if (!marker?.isConnected) return;
+          marker.scrollIntoView({ block: 'center' });
+          marker.focus({ preventScroll: true });
+          focusOnLoad.current = false;
+        });
+      });
+      return () => cancelAnimationFrame(frame);
     }
-  }, [selected, page, after]);
+  }, [selected, page, after, map, mapError]);
   useEffect(() => {
     const controller = new AbortController();
     setBusy(true); setError(''); setPage(undefined);
@@ -40,12 +69,19 @@ export function Timeline({ overview, onInspect }: { overview: Overview; onInspec
         if (controller.signal.aborted) return;
         loadedCursor.current = after;
         setPage(value);
-        setSelectedId(old => value.events.some(event => event.id === old) ? old : (edge.current === 'last' ? value.events.at(-1) : value.events[0])?.id);
+        const requested = requestedEvent.current;
+        requestedEvent.current = undefined;
+        if (requested && !value.events.some(event => event.id === requested)) {
+          focusOnLoad.current = false;
+          setError('The selected response target is unavailable within this timeline range. Inspect its usage source instead.');
+        }
+        setSelectedId(old => requested && value.events.some(event => event.id === requested) ? requested
+          : value.events.some(event => event.id === old) ? old : (edge.current === 'last' ? value.events.at(-1) : value.events[0])?.id);
       })
       .catch(error => { if (!controller.signal.aborted) setError((error as Error).message); })
       .finally(() => { if (!controller.signal.aborted) setBusy(false); });
     return () => controller.abort();
-  }, [overview.id, overview.state, after, kind]);
+  }, [overview.id, overview.state, after, kind, jumpRevision]);
   useEffect(() => {
     const controller = new AbortController();
     setMap(undefined); setMapError('');
@@ -55,6 +91,7 @@ export function Timeline({ overview, onInspect }: { overview: Overview; onInspec
     return () => controller.abort();
   }, [overview.id, overview.state, kind]);
   function navigate(position: number, selection: 'first' | 'last' = 'first') {
+    requestedEvent.current = undefined;
     edge.current = selection;
     loadedCursor.current = -1;
     setSelectedId(undefined);
@@ -124,6 +161,14 @@ export function Timeline({ overview, onInspect }: { overview: Overview; onInspec
         </button>)}
       </div>
       {!page.events.length ? <p className="notice">No matching events within the indexed coverage.</p> : null}
+      {activeUsage ? <section className="usage-panel" aria-label="Selected response usage">
+        <div className="panel-heading"><h2>Selected usage observation · line {activeUsage.ref.line}</h2><button onClick={() => setActiveUsage(undefined)}>Clear response selection</button></div>
+        <div className="metrics">{([['input', 'Input tokens'], ['output', 'Output tokens'], ['cached', 'Cache read'], ['cacheCreation', 'Cache creation']] as const).map(([key, label]) => <div key={key}><span>{label}</span><strong>{activeUsage.values[key] === null ? 'Unknown' : activeUsage.values[key].toLocaleString()}</strong></div>)}</div>
+        <p className="muted">{activeUsage.status === 'ambiguous' ? 'Conflicting or unassigned observation; excluded from resolved subtotals. ' : ''}{activeUsage.identityDetail} Recorded response; invocation scope unknown.</p>
+        <p className="muted">{activeUsage.navigation.detail} Surrounding events are recorded activity, not a reconstructed request or active-context evidence.</p>
+        <div className="pager timeline-related"><button onClick={() => onInspect(activeUsage.ref)}>Inspect usage source ↗</button><button onClick={() => jumpTo(activeUsage.navigation.target.id, activeUsage.navigation.target.position)}>Return to timeline target</button>{activeUsage.navigation.related.map(event => <button key={event.id} onClick={() => jumpTo(event.id, event.position)}>{event.label} · line {event.ref.line}</button>)}</div>
+        {activeUsage.navigation.omitted ? <p className="muted">{activeUsage.navigation.omitted} additional recorded links omitted; inspect the source for all captured blocks.</p> : null}
+      </section> : null}
       {selected ? <article className="timeline-detail" data-category={timelineCategory(selected)}>
         <div className="panel-heading"><div><span className="section-label">Event {selected.position + 1} · line {selected.ref.line}</span><h2>{selected.label}</h2></div><div className="pager"><button aria-label="Previous event" disabled={selectedIndex <= 0 && page.before === undefined} onClick={() => move(-1)}>←</button><button aria-label="Next event" disabled={selectedIndex === page.events.length - 1 && page.after === undefined} onClick={() => move(1)}>→</button></div></div>
         <div className="timeline-evidence"><span className="timeline-type">{categoryLabel(timelineCategory(selected))}</span><span>{selected.representation}</span><span>{selected.origin}</span>{selected.pairStatus ? <span className="badge amber">{selected.pairStatus}{!page.complete ? ' · coverage incomplete' : ''}</span> : null}</div>

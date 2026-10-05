@@ -2,7 +2,7 @@ import { array, identifier, object } from './json.js';
 import { timelineCategory, timelineCategoryMatches } from './timeline-category.js';
 import { measureCaptures } from './payload-size.js';
 import type { Obj } from './json.js';
-import type { EventKind, RecordMeta, SourceFile, TimelineEvent, TimelineFilter, TimelineMap, TimelinePage } from './types.js';
+import type { EventKind, RecordMeta, ResponseNavigation, SourceFile, SourceRef, TimelineEvent, TimelineFilter, TimelineMap, TimelinePage } from './types.js';
 
 const MAX_EVENTS = 40_000;
 const PREVIEW = 256;
@@ -12,6 +12,7 @@ const matches = (event: TimelineEvent, filter: TimelineFilter): boolean => timel
 export class Timeline {
   readonly events: TimelineEvent[] = [];
   private readonly fields = new Set<string>();
+  private readonly records = new Map<string, TimelineEvent[]>();
   private readonly tools = new Map<string, TimelineEvent[]>();
   omitted = 0;
   constructor(readonly source: SourceFile) {}
@@ -32,6 +33,9 @@ export class Timeline {
         preview: text.slice(0, PREVIEW), previewLimited: text.length > PREVIEW, ...options,
       };
       this.events.push(event);
+      const recordEvents = this.records.get(meta.ref.id) ?? [];
+      recordEvents.push(event);
+      this.records.set(meta.ref.id, recordEvents);
       if (pointer) this.fields.add(meta.ref.id + ':' + pointer);
       if (event.toolId && (kind === 'tool-call' || kind === 'tool-result')) {
         const key = JSON.stringify([event.actorId, event.toolId]);
@@ -143,6 +147,32 @@ export class Timeline {
         });
     }
     measureCaptures(record, this.events.slice(start));
+  }
+  responseNavigation(ref: SourceRef, matchingRefs: readonly SourceRef[] = [ref]): ResponseNavigation | undefined {
+    // Matching refs already belong to one reconciled identity/measurement.
+    // Each content link additionally requires usage on that physical record.
+    const recordEvents: TimelineEvent[] = [];
+    const usages: TimelineEvent[] = [];
+    const seen = new Set<string>();
+    for (const reference of matchingRefs) {
+      if (seen.has(reference.id)) continue;
+      seen.add(reference.id);
+      const events = this.records.get(reference.id) ?? [];
+      const usage = events.find(event => event.kind === 'usage' && event.ref.pointer === reference.pointer);
+      if (usage) { usages.push(usage); recordEvents.push(...events); }
+    }
+    if (!usages.length) return undefined;
+    const response = this.source.family === 'claude'
+      ? recordEvents.filter(event => event.role === 'assistant' && event.representation === 'primary') : [];
+    const target = response.find(event => event.kind === 'message') ?? response.find(event => event.kind === 'tool-call') ?? response[0] ?? usages[0]!;
+    const related = [...response, ...usages].filter(event => event.id !== target.id);
+    return {
+      target: { id: target.id, position: target.position },
+      detail: response.length ? 'Explicit recorded association: each response block shares a physical record with usage in this reconciled response group. Matching copies remain separate. Prompt, instruction, and snapshot associations remain unknown.'
+        : 'Jump targets the recorded usage evidence. Association with response content, prompts, instructions, or snapshots remains unknown.',
+      related: related.slice(0, 20).map(event => ({ id: event.id, position: event.position, label: event.label, ref: event.ref })),
+      omitted: Math.max(0, related.length - 20),
+    };
   }
   page(after: number, filter: TimelineFilter, scanComplete: boolean): TimelinePage {
     const events: TimelineEvent[] = [];

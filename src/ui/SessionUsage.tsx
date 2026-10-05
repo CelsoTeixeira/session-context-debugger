@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { Overview, SourceRef, UsagePage, UsageValues } from '../core/types';
+import type { Overview, SourceRef, UsageJump, UsagePage, UsageValues } from '../core/types';
 import { api } from './api';
 
 const metrics: Array<[keyof UsageValues, string, string]> = [
@@ -23,7 +23,7 @@ export function SessionUsageSummary({ overview }: { overview: Overview }) {
   </section>;
 }
 
-export function SessionUsage({ overview, onInspect }: { overview: Overview; onInspect: (ref: SourceRef) => void }) {
+export function SessionUsage({ overview, onInspect, onNavigate }: { overview: Overview; onInspect: (ref: SourceRef) => void; onNavigate: (jump: UsageJump) => void }) {
   const [expanded, setExpanded] = useState(false);
   const [after, setAfter] = useState(0);
   const [order, setOrder] = useState<'source' | 'input'>('input');
@@ -50,7 +50,7 @@ export function SessionUsage({ overview, onInspect }: { overview: Overview; onIn
           {order === 'input' ? <td>{call.status === 'resolved' && call.variants.length === 1 && variant.values.input !== null ? after + position + 1 : '—'}</td> : null}
           <td><strong>Line {variant.ref.line}</strong><br />{call.status === 'resolved' ? 'Included' : 'Excluded'}{call.variants.length > 1 ? ' · variant ' + (i + 1) : ''}<details><summary>Identity and scope</summary>{call.identityDetail}<br />Recorded response; invocation scope unknown.<br />Actor: <span className="path">{call.actorId}</span>{call.model ? <><br />Model: {call.model}</> : null}</details></td>
           {metrics.map(([key]) => <td key={key}>{shown(variant.values[key])}</td>)}
-          <td><button onClick={() => onInspect(variant.ref)}>Inspect line {variant.ref.line} ↗</button><br />{variant.matchingRefs} retained matching reference{variant.matchingRefs === 1 ? '' : 's'}</td>
+          <td><button disabled={!variant.navigation} onClick={() => { if (variant.navigation) onNavigate({ sessionId: overview.id, navigation: variant.navigation, values: variant.values, ref: variant.ref, status: call.status, identityDetail: call.identityDetail }); }}>Show in timeline ↑</button><br /><button onClick={() => onInspect(variant.ref)}>Inspect line {variant.ref.line} ↗</button>{variant.navigation ? <details><summary>Timeline association</summary>{variant.navigation.detail}</details> : <p className="muted">Timeline target unavailable within retained coverage.</p>}{variant.matchingRefs} retained matching reference{variant.matchingRefs === 1 ? '' : 's'}</td>
         </tr>))}</tbody></table></div>
         <div className="pager"><button disabled={!after} onClick={() => setAfter(Math.max(0, after - 20))}>Previous responses</button><button disabled={page.after === undefined} onClick={() => setAfter(page.after!)}>Next responses →</button></div>
       </>}

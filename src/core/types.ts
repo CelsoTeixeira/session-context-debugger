@@ -59,10 +59,24 @@ export interface UsageSummary {
 }
 export interface UsagePage {
   calls: Array<Pick<ModelCall, 'id' | 'actorId' | 'identityDetail' | 'model' | 'status' | 'firstLine'> & {
-    variants: Array<{ values: UsageValues; ref: SourceRef; matchingRefs: number }>;
+    variants: Array<{ values: UsageValues; ref: SourceRef; matchingRefs: number; navigation?: ResponseNavigation }>;
   }>;
   after?: number;
   total: number;
+}
+export interface ResponseNavigation {
+  target: { id: string; position: number };
+  detail: string;
+  related: Array<{ id: string; position: number; label: string; ref: SourceRef }>;
+  omitted: number;
+}
+export interface UsageJump {
+  sessionId: string;
+  navigation: ResponseNavigation;
+  values: UsageValues;
+  ref: SourceRef;
+  status: ModelCall['status'];
+  identityDetail: string;
 }
 export interface RecordMeta {
   ref: SourceRef;

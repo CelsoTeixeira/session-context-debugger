@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import type { DatabaseRef, LogMatch, Overview, SourceListing, SourceMode, SourceRef, T3Listing, T3Resolution } from '../core/types';
+import type { DatabaseRef, LogMatch, Overview, SourceListing, SourceMode, SourceRef, T3Listing, T3Resolution, UsageJump } from '../core/types';
 import { api, consumeAccessLink } from './api';
 import { Beginning } from './Beginning';
 import { Coverage } from './Coverage';
@@ -15,6 +15,7 @@ export function App() {
   const [accessGeneration, setAccessGeneration] = useState(0);
   const [mode, setMode] = useState<SourceMode>('t3');
   const [sessionView, setSessionView] = useState<'timeline' | 'beginning'>('timeline');
+  const [usageJump, setUsageJump] = useState<UsageJump>();
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const sidebarToggle = useRef<HTMLButtonElement>(null);
   const [listing, setListing] = useState<{ kind: 't3'; data: T3Listing } | { kind: 'claude' | 'codex'; data: SourceListing }>();
@@ -37,6 +38,7 @@ export function App() {
     setOpening(false);
     setSessionId('');
     setOverview(undefined);
+    setUsageJump(undefined);
     setSelectedRef(undefined);
     setDatabaseRef(undefined);
     setResolution(undefined);
@@ -206,8 +208,8 @@ export function App() {
           <SessionUsageSummary overview={overview} />
           <div className="segmented session-view" aria-label="Recording view"><button className={sessionView === 'timeline' ? 'selected' : ''} aria-pressed={sessionView === 'timeline'} onClick={() => setSessionView('timeline')}>Visual timeline</button><button className={sessionView === 'beginning' ? 'selected' : ''} aria-pressed={sessionView === 'beginning'} onClick={() => setSessionView('beginning')}>Beginning and instructions</button></div>
           <div hidden={sessionView !== 'beginning'}><Beginning overview={overview} onInspect={inspect} /></div>
-          <div hidden={sessionView !== 'timeline'}><Timeline key={'timeline:' + overview.id} overview={overview} onInspect={inspect} /></div>
-          <SessionUsage key={'usage:' + overview.id} overview={overview} onInspect={inspect} />
+          <div hidden={sessionView !== 'timeline'}><Timeline key={'timeline:' + overview.id} overview={overview} onInspect={inspect} usageJump={usageJump} /></div>
+          <SessionUsage key={'usage:' + overview.id} overview={overview} onInspect={inspect} onNavigate={jump => { setSelectedRef(undefined); setDatabaseRef(undefined); setSessionView('timeline'); setUsageJump(jump); }} />
           <Coverage key={overview.id} overview={overview} onInspect={inspect} />
         </> : !resolution && !opening ? <div className="empty-state"><div className="section-label">A recording, with its receipts</div><h1>Start at the beginning.</h1><p>{mode === 't3' ? 'Select a T3 thread to inspect its current provider binding and a verified linked recording.' : 'Select a recording to inspect the first input, captured instructions, diagnostic snapshots, and provider-reported usage.'}</p><div className="empty-rule" /><p className="muted">Recorded data, request payloads, active-context evidence, and unknowns keep their own meaning.</p></div> : null}
       </main>

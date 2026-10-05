@@ -110,7 +110,8 @@ export async function createApp(roots?: string[]) {
           return send(res, 200, { ok: true, data: { total: calls.length, after: end < calls.length ? end : undefined,
             calls: calls.slice(after, end).map(call => ({ id: call.id, actorId: call.actorId, model: call.model,
               identityDetail: call.identityDetail, status: call.status, firstLine: call.firstLine,
-              variants: call.variants.map(variant => ({ values: variant.values, ref: variant.refs[0], matchingRefs: variant.refs.length })) })) } });
+              variants: call.variants.map(variant => ({ values: variant.values, ref: variant.refs[0], matchingRefs: variant.refs.length,
+                navigation: session.timeline.responseNavigation(variant.refs[0]!, variant.refs) })) })) } });
         }
         if (route === 'events' && req.method === 'GET') {
           const after = Number(url.searchParams.get('after') ?? 0);
