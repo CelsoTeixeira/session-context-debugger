@@ -145,8 +145,51 @@ export interface Overview {
   ambiguousCalls: number;
   usage: UsageSummary;
   warnings: string[];
+  relationships: RelationListing;
   limits: { parseBytes: number; previewCodeUnits: number; maxRecords: number; maxItems: number };
 }
+export interface SessionRelation {
+  id: string;
+  direction: 'parent' | 'child';
+  label: string;
+  targetId?: string;
+  toolId?: string;
+  agentPath?: string;
+  conflict?: boolean;
+  refs: SourceRef[];
+}
+export interface RelationListing {
+  links: SessionRelation[];
+  complete: boolean;
+  omitted: number;
+  detail: string;
+}
+export interface RelationEvidence {
+  id: string;
+  label: string;
+  path: string;
+  ref?: SourceRef;
+  sha256: string;
+  bytes: number;
+}
+export interface RelationMatch {
+  id: string;
+  path: string;
+  actorId: string;
+  rootId: string;
+  status: 'verified' | 'conflicting' | 'unverified';
+  detail: string;
+  evidence: RelationEvidence[];
+}
+export interface RelationResolution {
+  id: string;
+  relation: SessionRelation;
+  status: 'verified' | 'ambiguous' | 'missing' | 'unavailable';
+  matches: RelationMatch[];
+  complete: boolean;
+  warnings: string[];
+}
+export interface RelationOpen { id: string; returnToken: string; returnLabel: string; returnRole: 'parent' | 'child' }
 export interface Candidate {
   id: string;
   path: string;

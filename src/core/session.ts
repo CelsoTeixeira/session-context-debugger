@@ -8,6 +8,7 @@ import { Normalizer } from './normalize.js';
 import { Timeline } from './timeline.js';
 import { summarizeUsage } from './usage.js';
 import { SourceSearch } from './search.js';
+import { SessionRelationships } from './relationships.js';
 import { MAX_ITEMS, MAX_RECORDS, PARSE_BYTES, PREVIEW_UNITS, scan } from './scanner.js';
 import { abortIfNeeded, DataError, Sources } from './source.js';
 import type { CoverageLedger, Overview, RecordMeta, RecordView, SearchView, SourceFile, SourceRef } from './types.js';
@@ -29,6 +30,7 @@ export class Session {
   readonly normalizer: Normalizer;
   readonly timeline: Timeline;
   readonly coverage: CoverageLedger;
+  readonly relationships: SessionRelationships;
   state: Overview['state'] = 'indexing';
   error?: string;
   done?: Promise<void>;
@@ -38,12 +40,13 @@ export class Session {
     this.normalizer = new Normalizer(source);
     this.timeline = new Timeline(source);
     this.coverage = ledger(source.size);
+    this.relationships = new SessionRelationships(source);
   }
   async index(): Promise<void> {
     try {
       this.coverage.prefixSha256 = await scan(this.source, ({ ref, bytes, pending }) => {
         if (this.linkedIdentity?.id === ref.id && (pending || ref.sha256 !== this.linkedIdentity.sha256 || ref.offset !== this.linkedIdentity.offset)) {
-          throw new DataError('stale-reference', 'Linked provider identity changed during indexing. Reselect the T3 thread.', 409);
+          throw new DataError('stale-reference', 'Linked recording identity changed during indexing. Resolve and reopen the recording.', 409);
         }
         const meta: RecordMeta = { ref, outerType: '(unparsed)', disposition: 'unknown' };
         let decoded: Record<string, unknown> | undefined;
@@ -76,7 +79,10 @@ export class Session {
             meta.reason = error instanceof Error ? error.message.slice(0, 200) : 'Unable to decode record.';
           }
         }
-        if (this.records.has(ref.id)) this.timeline.capture(decoded, meta);
+        if (this.records.has(ref.id)) {
+          this.timeline.capture(decoded, meta);
+          if (decoded && meta.disposition !== 'malformed') this.relationships.capture(decoded, ref);
+        }
         count(this.coverage.dispositions, meta.disposition);
         if (!pending) this.coverage.completeLines++;
         count(this.coverage.outerTypes, meta.outerType);
@@ -87,7 +93,7 @@ export class Session {
         this.coverage.normalizationLimited = this.normalizer.limitedItems;
       }, bytes => { this.coverage.scannedBytes = bytes; }, this.controller.signal);
       if (this.linkedIdentity && !this.records.has(this.linkedIdentity.id)) {
-        throw new DataError('stale-reference', 'Linked provider identity is missing from the indexed snapshot. Reselect the T3 thread.', 409);
+        throw new DataError('stale-reference', 'Linked recording identity is missing from the indexed snapshot. Resolve and reopen the recording.', 409);
       }
       this.coverage.complete = true;
       this.state = 'ready';
@@ -124,7 +130,9 @@ export class Session {
       snapshots: items.filter(item => item.kind === 'snapshot').slice(0, 200),
       firstCall, callCount: calls.length, ambiguousCalls: calls.filter(call => call.status === 'ambiguous').length,
       usage: summarizeUsage(calls),
-      warnings, limits: { parseBytes: PARSE_BYTES, previewCodeUnits: PREVIEW_UNITS, maxRecords: MAX_RECORDS, maxItems: MAX_ITEMS },
+      warnings, relationships: this.relationships.listing(this.coverage.complete && this.coverage.completeLines <= this.records.size
+        && !this.coverage.pendingBytes && !this.coverage.dispositions.limited && !this.coverage.dispositions.malformed),
+      limits: { parseBytes: PARSE_BYTES, previewCodeUnits: PREVIEW_UNITS, maxRecords: MAX_RECORDS, maxItems: MAX_ITEMS },
     };
   }
   async record(refId: string, pointer: string | undefined, offset: number, signal?: AbortSignal): Promise<RecordView> {
@@ -227,7 +235,7 @@ export class Sessions {
   readonly entries = new Map<string, Session>();
   private serial = 0;
   constructor(readonly sources: Sources) {}
-  async open(path: string, signal?: AbortSignal, identity?: SourceRef): Promise<Session> {
+  async open(path: string, signal?: AbortSignal, identity?: SourceRef, identityInfo?: { actorId: string; rootId: string }): Promise<Session> {
     const serial = ++this.serial;
     const resolved = await this.sources.resolve(path);
     const info = await stat(resolved.path);
@@ -237,7 +245,8 @@ export class Sessions {
     for (const session of this.entries.values()) session.controller.abort();
     this.entries.clear();
     const source: SourceFile = { id: randomUUID(), generation: randomUUID(), originalPath: path,
-      resolvedPath: resolved.path, family: resolved.family, size: info.size, modifiedAt: info.mtime.toISOString() };
+      resolvedPath: resolved.path, family: resolved.family, size: info.size, modifiedAt: info.mtime.toISOString(),
+      actorId: identityInfo?.actorId, rootSessionId: identityInfo?.rootId };
     const session = new Session(source, this.sources);
     if (identity) session.linkedIdentity = { ...identity, sourceId: source.id, generation: source.generation };
     this.entries.set(session.id, session);

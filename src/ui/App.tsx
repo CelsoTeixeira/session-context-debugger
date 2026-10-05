@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import type { DatabaseRef, LogMatch, Overview, SourceListing, SourceMode, SourceRef, T3Listing, T3Resolution, UsageJump } from '../core/types';
+import type { DatabaseRef, LogMatch, Overview, RelationOpen, SourceListing, SourceMode, SourceRef, T3Listing, T3Resolution, UsageJump } from '../core/types';
 import { api, consumeAccessLink } from './api';
 import { Beginning } from './Beginning';
 import { Coverage } from './Coverage';
@@ -9,6 +9,7 @@ import { DatabaseInspector } from './DatabaseInspector';
 import { T3Context } from './T3Context';
 import { Timeline } from './Timeline';
 import { SessionUsage, SessionUsageSummary } from './SessionUsage';
+import { RelatedSessions } from './RelatedSessions';
 
 const formatBytes = (bytes: number): string => bytes >= 1024 * 1024 ? (bytes / 1024 / 1024).toFixed(1) + ' MB' : (bytes / 1024).toFixed(1) + ' KB';
 export function App() {
@@ -31,6 +32,8 @@ export function App() {
   const [error, setError] = useState('');
   const [listingBusy, setListingBusy] = useState(false);
   const [opening, setOpening] = useState(false);
+  const [relationRequest, setRelationRequest] = useState<{ id: string; serial: number }>();
+  const [navigation, setNavigation] = useState<Array<{ token: string; label: string; path: string; role: 'parent' | 'child' }>>([]);
   const listController = useRef<AbortController | null>(null);
   const openController = useRef<AbortController | null>(null);
   const selectionSerial = useRef(0);
@@ -46,6 +49,8 @@ export function App() {
     setResolution(undefined);
     setLinkIdentity(undefined);
     setError('');
+    setRelationRequest(undefined);
+    setNavigation([]);
     setSidebarOpen(true);
   }
   function inspect(ref: SourceRef, offset = 0) { setDatabaseRef(undefined); setSelectedOffset(offset); setSelectedRef(ref); }
@@ -120,6 +125,41 @@ export function App() {
     setSessionId(result.id);
     setLinkIdentity(result.identity);
     setSidebarOpen(false);
+  }
+  async function openRelated(resolutionId: string, matchId: string, targetPath: string) {
+    if (!overview) return;
+    const previous = overview.source.originalPath;
+    openController.current?.abort();
+    const controller = new AbortController(); openController.current = controller;
+    const serial = ++selectionSerial.current;
+    setOpening(true); setError('');
+    try {
+      const result = await api<RelationOpen>('/api/sessions/' + overview.id + '/relationships/open', {
+        method: 'POST', body: JSON.stringify({ resolutionId, matchId }), signal: controller.signal,
+      });
+      if (serial !== selectionSerial.current || controller.signal.aborted) return;
+      setNavigation(history => [...history, { token: result.returnToken, label: result.returnLabel, path: previous, role: result.returnRole }].slice(-16));
+      setOverview(undefined); setResolution(undefined); setLinkIdentity(undefined);
+      setPath(targetPath);
+      setSelectedRef(undefined); setDatabaseRef(undefined); setUsageJump(undefined); setRelationRequest(undefined);
+      setSessionView('timeline'); setSessionId(result.id); setSidebarOpen(false);
+    } finally { if (serial === selectionSerial.current) setOpening(false); }
+  }
+  async function returnToRecording() {
+    const previous = navigation.at(-1); if (!previous) return;
+    openController.current?.abort();
+    const controller = new AbortController(); openController.current = controller;
+    const serial = ++selectionSerial.current;
+    setOpening(true); setError('');
+    try {
+      const result = await api<{ id: string }>('/api/navigation/return', { method: 'POST', body: JSON.stringify({ token: previous.token }), signal: controller.signal });
+      if (serial !== selectionSerial.current || controller.signal.aborted) return;
+      setNavigation(history => history.slice(0, -1)); setPath(previous.path);
+      setOverview(undefined); setResolution(undefined); setLinkIdentity(undefined);
+      setSelectedRef(undefined); setDatabaseRef(undefined); setUsageJump(undefined); setRelationRequest(undefined);
+      setSessionView('timeline'); setSessionId(result.id); setSidebarOpen(false);
+    } catch (err) { if (serial === selectionSerial.current && !controller.signal.aborted) setError((err as Error).message); }
+    finally { if (serial === selectionSerial.current) setOpening(false); }
   }
   async function openThread(id: string) {
     clearSelection();
@@ -204,12 +244,15 @@ export function App() {
         {opening ? <div className="notice">{mode === 't3' ? 'Resolving selected source…' : 'Opening recording…'} <button onClick={() => { openController.current?.abort(); selectionSerial.current++; setOpening(false); }}>Cancel</button></div> : null}
         {resolution ? <T3Context resolution={resolution} identity={overview?.state === 'ready' ? linkIdentity : undefined} onDatabase={inspectDatabase} onIdentity={inspect} onOpen={match => void openMatch(match)} /> : null}
         {overview ? <>
+          {navigation.length ? <div className="recording-navigation"><button disabled={opening} onClick={() => void returnToRecording()}>← Back to {navigation.at(-1)!.role} recording</button><span className="muted">{navigation.at(-1)!.label} · reopens and validates its identity</span></div> : null}
           <div className="session-strip"><div><span className="muted">{overview.source.runtime ?? 'Runtime unknown'} · {overview.source.version ?? 'Version unknown'} · {formatBytes(overview.source.size)}</span><div className="path">{overview.source.originalPath}</div></div><div className="session-actions"><CoverageNotes key={overview.id} overview={overview} /><button onClick={() => resolution ? void openThread(resolution.thread.id) : void openPath(overview.source.originalPath)}>Reopen</button></div></div>
+          {overview.relationships.links.length || navigation.length ? <p className="recording-identity muted">Actor/thread: {overview.source.actorId ?? 'unknown'} · Root session: {overview.source.rootSessionId ?? 'unknown'}<br />Usage belongs to this recording. Linked recordings keep separate measurements.</p> : null}
           {overview.state === 'indexing' ? <div className="scan-progress"><progress max={overview.coverage.inspectedBytes || 1} value={overview.coverage.scannedBytes} /><span>Indexing recording… <button onClick={() => void api('/api/sessions/' + overview.id + '/cancel', { method: 'POST', body: '{}' })}>Cancel</button></span></div> : null}
           <SessionUsageSummary overview={overview} />
           <div className="segmented session-view" aria-label="Recording view"><button className={sessionView === 'timeline' ? 'selected' : ''} aria-pressed={sessionView === 'timeline'} onClick={() => setSessionView('timeline')}>Visual timeline</button><button className={sessionView === 'beginning' ? 'selected' : ''} aria-pressed={sessionView === 'beginning'} onClick={() => setSessionView('beginning')}>Beginning and instructions</button></div>
+          <RelatedSessions key={'relations:' + overview.id} overview={overview} request={relationRequest} onInspect={inspect} onOpen={openRelated} />
           <div hidden={sessionView !== 'beginning'}><Beginning overview={overview} onInspect={inspect} /></div>
-          <div hidden={sessionView !== 'timeline'}><Timeline key={'timeline:' + overview.id} overview={overview} onInspect={inspect} onSourceNavigate={() => { setSelectedRef(undefined); setDatabaseRef(undefined); }} usageJump={usageJump} /></div>
+          <div hidden={sessionView !== 'timeline'}><Timeline key={'timeline:' + overview.id} overview={overview} onInspect={inspect} onSourceNavigate={() => { setSelectedRef(undefined); setDatabaseRef(undefined); }} onRelation={id => { setSelectedRef(undefined); setDatabaseRef(undefined); setRelationRequest(old => ({ id, serial: (old?.serial ?? 0) + 1 })); }} usageJump={usageJump} /></div>
           <SessionUsage key={'usage:' + overview.id} overview={overview} onInspect={inspect} onNavigate={jump => { setSelectedRef(undefined); setDatabaseRef(undefined); setSessionView('timeline'); setUsageJump(jump); }} />
           <Coverage key={overview.id} overview={overview} onInspect={inspect} />
         </> : !resolution && !opening ? <div className="empty-state"><div className="section-label">A recording, with its receipts</div><h1>Start at the beginning.</h1><p>{mode === 't3' ? 'Select a T3 thread to inspect its current provider binding and a verified linked recording.' : 'Select a recording to inspect the first input, captured instructions, diagnostic snapshots, and provider-reported usage.'}</p><div className="empty-rule" /><p className="muted">Recorded data, request payloads, active-context evidence, and unknowns keep their own meaning.</p></div> : null}

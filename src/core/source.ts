@@ -38,8 +38,14 @@ export class Sources {
   }
   allowedRoots(): string[] { return [...this.roots]; }
   async resolve(path: string): Promise<{ path: string; family: Family }> {
-    if (!isAbsolute(path) || !path.toLowerCase().endsWith('.jsonl')) {
-      throw new DataError('unsupported-path', 'Choose an absolute path to a JSONL session file.');
+    return this.resolveFile(path, '.jsonl');
+  }
+  async resolveMetadata(path: string): Promise<string> {
+    return (await this.resolveFile(path, '.meta.json')).path;
+  }
+  private async resolveFile(path: string, extension: string): Promise<{ path: string; family: Family }> {
+    if (!isAbsolute(path) || !path.toLowerCase().endsWith(extension)) {
+      throw new DataError('unsupported-path', 'Choose an absolute path ending in ' + extension + '.');
     }
     let resolved: string;
     try { resolved = await realpath(path); }

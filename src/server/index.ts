@@ -7,6 +7,7 @@ import { DataError, Sources, within } from '../core/source.js';
 import { Sessions } from '../core/session.js';
 import { T3Catalog } from '../core/t3.js';
 import { T3Links } from '../core/t3-links.js';
+import { Relationships } from '../core/relationships.js';
 import { object, string } from '../core/json.js';
 import type { TimelineFilter } from '../core/types.js';
 
@@ -44,6 +45,7 @@ export async function createApp(roots?: string[]) {
   const sessions = new Sessions(sources);
   const t3 = new T3Catalog();
   const links = new T3Links(t3, sources);
+  const relationships = new Relationships(sources);
   const token = randomBytes(32).toString('base64url');
   let origin = '';
   const server = createServer(async (req, res) => {
@@ -87,10 +89,25 @@ export async function createApp(roots?: string[]) {
           const session = await sessions.open(path, controller.signal);
           return send(res, 202, { ok: true, data: { id: session.id } });
         }
-        const match = /^\/api\/sessions\/([0-9a-f-]+)\/(overview|events|usage|ledger|cancel|search(?:\/cancel)?|records(?:\/r\d+)?)$/.exec(url.pathname);
+        if (url.pathname === '/api/navigation/return' && req.method === 'POST') {
+          const body = await readBody(req);
+          return send(res, 202, { ok: true, data: await relationships.returnTo(sessions, string(body.token) ?? '', controller.signal) });
+        }
+        const match = /^\/api\/sessions\/([0-9a-f-]+)\/(overview|events|usage|ledger|cancel|relationships\/(?:resolve|open|evidence)|search(?:\/cancel)?|records(?:\/r\d+)?)$/.exec(url.pathname);
         if (!match || !uuid.test(match[1] ?? '')) throw new DataError('not-found', 'API route unavailable.', 404);
         const session = sessions.get(match[1]!);
         const route = match[2]!;
+        if (route === 'relationships/resolve' && req.method === 'POST') {
+          const body = await readBody(req);
+          return send(res, 200, { ok: true, data: await relationships.resolve(session, string(body.linkId) ?? '', controller.signal) });
+        }
+        if (route === 'relationships/open' && req.method === 'POST') {
+          const body = await readBody(req);
+          return send(res, 202, { ok: true, data: await relationships.open(session, sessions, string(body.resolutionId) ?? '', string(body.matchId) ?? '', controller.signal) });
+        }
+        if (route === 'relationships/evidence' && req.method === 'GET') {
+          return send(res, 200, { ok: true, data: await relationships.inspect(session, url.searchParams.get('resolutionId') ?? '', url.searchParams.get('evidenceId') ?? '', controller.signal) });
+        }
         if (route === 'overview' && req.method === 'GET') return send(res, 200, { ok: true, data: session.overview() });
         if (route === 'search' && req.method === 'POST') {
           const body = await readBody(req);
