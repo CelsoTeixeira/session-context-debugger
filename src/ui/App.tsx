@@ -3,6 +3,7 @@ import type { DatabaseRef, LogMatch, Overview, SourceListing, SourceMode, Source
 import { api, consumeAccessLink } from './api';
 import { Beginning } from './Beginning';
 import { Coverage } from './Coverage';
+import { CoverageNotes } from './CoverageNotes';
 import { EvidenceInspector } from './EvidenceInspector';
 import { DatabaseInspector } from './DatabaseInspector';
 import { T3Context } from './T3Context';
@@ -203,9 +204,8 @@ export function App() {
         {opening ? <div className="notice">{mode === 't3' ? 'Resolving selected source…' : 'Opening recording…'} <button onClick={() => { openController.current?.abort(); selectionSerial.current++; setOpening(false); }}>Cancel</button></div> : null}
         {resolution ? <T3Context resolution={resolution} identity={overview?.state === 'ready' ? linkIdentity : undefined} onDatabase={inspectDatabase} onIdentity={inspect} onOpen={match => void openMatch(match)} /> : null}
         {overview ? <>
-          <div className="session-strip"><div><span className="muted">{overview.source.runtime ?? 'Runtime unknown'} · {overview.source.version ?? 'Version unknown'} · {formatBytes(overview.source.size)}</span><div className="path">{overview.source.originalPath}</div></div><button onClick={() => resolution ? void openThread(resolution.thread.id) : void openPath(overview.source.originalPath)}>Reopen</button></div>
+          <div className="session-strip"><div><span className="muted">{overview.source.runtime ?? 'Runtime unknown'} · {overview.source.version ?? 'Version unknown'} · {formatBytes(overview.source.size)}</span><div className="path">{overview.source.originalPath}</div></div><div className="session-actions"><CoverageNotes key={overview.id} overview={overview} /><button onClick={() => resolution ? void openThread(resolution.thread.id) : void openPath(overview.source.originalPath)}>Reopen</button></div></div>
           {overview.state === 'indexing' ? <div className="scan-progress"><progress max={overview.coverage.inspectedBytes || 1} value={overview.coverage.scannedBytes} /><span>Indexing recording… <button onClick={() => void api('/api/sessions/' + overview.id + '/cancel', { method: 'POST', body: '{}' })}>Cancel</button></span></div> : null}
-          {overview.warnings.length ? <details className="warnings"><summary>{overview.warnings.length} evidence/coverage note{overview.warnings.length === 1 ? '' : 's'}</summary><ul>{overview.warnings.map((warning, i) => <li key={i}>{warning}</li>)}</ul></details> : null}
           <SessionUsageSummary overview={overview} />
           <div className="segmented session-view" aria-label="Recording view"><button className={sessionView === 'timeline' ? 'selected' : ''} aria-pressed={sessionView === 'timeline'} onClick={() => setSessionView('timeline')}>Visual timeline</button><button className={sessionView === 'beginning' ? 'selected' : ''} aria-pressed={sessionView === 'beginning'} onClick={() => setSessionView('beginning')}>Beginning and instructions</button></div>
           <div hidden={sessionView !== 'beginning'}><Beginning overview={overview} onInspect={inspect} /></div>

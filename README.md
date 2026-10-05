@@ -18,6 +18,7 @@ Recorded content, diagnostic snapshots, request inclusion, and active-context ev
 - **Beginning and instructions** retains first-input and captured startup evidence. **Inspect source** opens hash-validated raw records or selected fields in bounded ranges.
 - **Search this recording** finds case-sensitive literal text in the selected raw UTF-8 JSONL snapshot, including oversized and unknown records. JSON escapes stay escaped. Search is independent of activity filters, keeps one first-match result per line, and stops at 100 matching lines or 30 seconds with explicit incomplete coverage. Cancelled searches never establish absence. Inspect match opens a hash-validated range at its byte offset; the timeline jump selects the first indexed event on that line, which may be a different field. Search reads are bounded and memory-only.
 - **Category ranking** and **Search this recording** start collapsed. Open their headers when needed; closing/reopening retains controls and results, and an active search continues with its status visible in the header. Selecting a new recording resets both panels.
+- **Coverage notes** appear as a compact count beside the recording information. Open it to read every notice; routine unrecognized formats use a neutral style, while recorded read failures and incomplete scan/normalization conditions use amber. Escape closes the notes, and reopening a recording resets them.
 
 ## Local use
 
