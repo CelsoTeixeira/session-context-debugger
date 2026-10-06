@@ -48,7 +48,7 @@ T3 catalog rows and provider JSONL records retain separate evidence references. 
 
 ## Current scope and limits
 
-Beginning and T3 discovery are implemented with scoped verification. Conversation/tool browsing, clickable visual navigation, recorded usage subtotals/response ranking, and captured payload category ranking are usable increments. The broader milestones remain in progress: model-call navigation, literal source search, child-session navigation, compaction/context charts, duplication/exposure diagnostics, and enriched discovery/refresh are still pending.
+Beginning and T3 discovery are implemented with scoped verification. Conversation/tool browsing, clickable visual navigation, literal raw-source search, supported parent/child and recorded-response navigation, usage subtotals/ranking, captured payload ranking, and the provider-input chart with source-linked compaction markers are usable increments. The broader milestones remain in progress: richer relationship/mirror coverage, context-window reconstruction, separate cumulative/counter/byte charts, duplication/exposure diagnostics, and enriched discovery/refresh are still pending. Provider input measurements do not prove active-context size; conflicting values remain gaps and runtime compaction counters stay separate.
 
 - Raw scanning uses UTF-8 byte offsets, physical LF/CRLF delimiters, and SHA-256 record hashes. An unterminated tail remains pending.
 - Normalization is capped at 8 MiB per record; larger records keep raw byte references and range access.

@@ -7,11 +7,12 @@ import { identifier, object } from './json.js';
 import { Normalizer } from './normalize.js';
 import { Timeline } from './timeline.js';
 import { summarizeUsage } from './usage.js';
+import { createUsageChartPage, MAX_COMPACTION_CAPTURES, MAX_COMPACTIONS_PER_PAGE, MAX_USAGE_CHART_POINTS, MAX_USAGE_REFERENCES_PER_VARIANT, MAX_USAGE_VARIANTS_PER_CALL, readCompactionCapture } from './usage-chart.js';
 import { SourceSearch } from './search.js';
 import { SessionRelationships } from './relationships.js';
 import { MAX_ITEMS, MAX_RECORDS, PARSE_BYTES, PREVIEW_UNITS, scan } from './scanner.js';
 import { abortIfNeeded, DataError, Sources } from './source.js';
-import type { CoverageLedger, LedgerPage, Overview, RecordMeta, RecordView, ResponseView, SearchView, SourceFile, SourceRef, TimelineFilter, TimelineMap, TimelinePage, UsagePage } from './types.js';
+import type { CompactionMarker, CoverageLedger, LedgerPage, Overview, RecordMeta, RecordView, ResponseView, SearchView, SourceFile, SourceRef, TimelineFilter, TimelineMap, TimelinePage, UsageChartPage, UsagePage } from './types.js';
 
 const ledger = (bytes: number): CoverageLedger => ({
   inspectedBytes: bytes, scannedBytes: 0, completeLines: 0, pendingBytes: 0,
@@ -27,6 +28,8 @@ export class Session {
   readonly id = randomUUID();
   readonly controller = new AbortController();
   private readonly records = new Map<string, RecordMeta>();
+  private readonly compactions: CompactionMarker[] = [];
+  private omittedCompactionCaptures = 0;
   private readonly normalizer: Normalizer;
   private readonly timeline: Timeline;
   private readonly coverage: CoverageLedger;
@@ -82,6 +85,14 @@ export class Session {
         if (this.records.has(ref.id)) {
           this.timeline.capture(decoded, meta);
           if (decoded && meta.disposition !== 'malformed') this.relationships.capture(decoded, ref);
+        }
+        if (decoded) {
+          const capture = readCompactionCapture(decoded, this.source.family, ref,
+            this.records.has(ref.id) ? this.timeline.recordTarget(ref.id) : undefined);
+          if (capture) {
+            if (this.records.has(ref.id) && this.compactions.length < MAX_COMPACTION_CAPTURES) this.compactions.push(capture);
+            else this.omittedCompactionCaptures++;
+          }
         }
         count(this.coverage.dispositions, meta.disposition);
         if (!pending) this.coverage.completeLines++;
@@ -162,6 +173,46 @@ export class Session {
         identityDetail: call.identityDetail, status: call.status, firstLine: call.firstLine,
         variants: call.variants.map(variant => ({ values: variant.values, ref: variant.refs[0]!, matchingRefs: variant.refs.length,
           navigation: this.timeline.responseNavigation(variant.refs[0]!, variant.refs) })) })) };
+  }
+  usageChart(after: number): UsageChartPage {
+    const calls = [...this.normalizer.calls.values()].sort((left, right) => left.firstLine - right.firstLine || left.id.localeCompare(right.id));
+    if (!Number.isSafeInteger(after) || after < 0 || after > calls.length) throw new DataError('invalid-cursor', 'Invalid usage chart cursor.');
+    const pendingRecords = this.coverage.dispositions.pending;
+    const sourceEndLine = this.coverage.completeLines + pendingRecords;
+    const indexComplete = this.coverage.complete && this.records.size === sourceEndLine;
+    const unsupportedRecords = this.coverage.dispositions.unknown > 0 || this.coverage.dispositions.malformed > 0
+      || this.coverage.dispositions.limited > 0 || pendingRecords > 0 || this.source.family === 'unknown';
+    const usageComplete = indexComplete && !unsupportedRecords && !this.normalizer.usageLimited;
+    const compactionCaptureComplete = indexComplete && !unsupportedRecords && this.omittedCompactionCaptures === 0;
+    const coverage = {
+      sourceFamily: this.source.family,
+      scanComplete: this.coverage.complete,
+      indexComplete,
+      usageComplete,
+      usageLimited: this.normalizer.usageLimited,
+      compactionCaptureComplete,
+      indexedRecords: this.records.size,
+      scannedLines: this.coverage.completeLines,
+      pendingRecords,
+      unknownRecords: this.coverage.dispositions.unknown,
+      malformedRecords: this.coverage.dispositions.malformed,
+      limitedRecords: this.coverage.dispositions.limited,
+      recordLimit: MAX_RECORDS,
+      retainedCalls: calls.length,
+      usageCallLimit: 20_000,
+      usageReferenceLimit: MAX_USAGE_REFERENCES_PER_VARIANT,
+      usageVariantLimit: MAX_USAGE_VARIANTS_PER_CALL,
+      pointPageLimit: MAX_USAGE_CHART_POINTS,
+      runtimeCounterRecords: this.coverage.payloadTypes.token_count ?? 0,
+      retainedCompactions: this.compactions.length,
+      omittedCompactionCaptures: this.omittedCompactionCaptures,
+      compactionCaptureLimit: MAX_COMPACTION_CAPTURES,
+      markerPageLimit: MAX_COMPACTIONS_PER_PAGE,
+      sourceEndLine,
+    };
+    return createUsageChartPage({ calls, compactions: this.compactions, after, sourceEndLine,
+      indexedSourceIds: new Set(this.records.keys()), coverage,
+      responseNavigation: (ref, refs) => this.timeline.responseNavigation(ref, refs) });
   }
   events(after: number, kind: string, view: string | null): TimelinePage | TimelineMap {
     if (!Number.isSafeInteger(after) || after < 0 || after > this.timeline.events.length) throw new DataError('invalid-cursor', 'Invalid timeline cursor.');

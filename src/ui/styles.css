@@ -1,0 +1,70 @@
+.usage-chart-panel {
+  margin: 18px 0 22px;
+  border: 1px solid #dde3d4;
+  border-radius: 8px;
+  background: #fff;
+}
+.usage-chart-panel > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-weight: 650;
+}
+.usage-chart-summary-note { color: #7b847b; font-size: 10px; font-weight: 400; }
+.usage-chart-body { padding: 0 16px 16px; }
+.usage-chart-body > .muted { line-height: 1.55; }
+.usage-chart-scope, .usage-chart-selectors, .usage-chart-legend, .usage-chart-actions, .usage-chart-pager {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.usage-chart-scope { justify-content: space-between; margin: 12px 0; color: #77806f; font-size: 10px; }
+.usage-chart-selectors { margin: 14px 0; }
+.usage-chart-selectors label { display: grid; gap: 5px; min-width: 220px; color: #5f695f; font-size: 10px; }
+.usage-chart-selectors select { max-width: min(420px, 100%); min-width: 220px; padding: 6px; border: 1px solid #d2d9cc; border-radius: 5px; background: #fff; color: inherit; }
+.usage-chart-scroll { overflow-x: auto; overscroll-behavior-inline: contain; border: 1px solid #edf0e8; border-radius: 6px; scrollbar-width: thin; }
+.usage-chart-svg { display: block; width: 100%; min-width: 680px; height: auto; color: #798579; }
+.usage-chart-grid { stroke: #e9ede5; stroke-width: 1; }
+.usage-chart-axis { stroke: #aeb8aa; stroke-width: 1.2; }
+.usage-chart-gap-rail { stroke: #e1d9bf; stroke-dasharray: 3 4; stroke-width: 1.2; }
+.usage-chart-axis-title, .usage-chart-rail-label { fill: #59665a; font-size: 11px; }
+.usage-chart-rail-label { font-size: 10px; }
+.usage-chart-tick { fill: #778276; font-size: 10px; }
+.usage-chart-point { fill: #39866a; stroke: #fff; stroke-width: 1.5; cursor: pointer; }
+.usage-chart-point:hover, .usage-chart-point.selected { fill: #24674f; stroke: #263e32; stroke-width: 2.5; }
+.usage-chart-gap { fill: #fff; stroke: #b78928; stroke-width: 2; cursor: pointer; }
+.usage-chart-gap:hover, .usage-chart-gap.selected { fill: #f4eddb; stroke: #765918; stroke-width: 3; }
+.usage-chart-point:focus, .usage-chart-gap:focus { outline: none; stroke: #1f362c; stroke-width: 3; }
+.usage-chart-compaction { cursor: pointer; }
+.usage-chart-compaction line { stroke: #9865a5; stroke-width: 1.5; }
+.usage-chart-compaction polygon { fill: #9865a5; stroke: #fff; stroke-width: 1.2; }
+.usage-chart-compaction:hover polygon, .usage-chart-compaction.selected polygon { fill: #754284; stroke: #36253b; stroke-width: 2.2; }
+.usage-chart-compaction:focus { outline: none; }
+.usage-chart-compaction:focus polygon { stroke: #251d29; stroke-width: 3; }
+.usage-chart-legend { margin: 12px 0 6px; color: #697368; font-size: 10px; }
+.usage-chart-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.usage-chart-legend i { display: inline-block; width: 9px; height: 9px; border-radius: 50%; }
+.usage-chart-legend-point { background: #39866a; }
+.usage-chart-legend-gap { background: #fff; border: 2px solid #b78928; }
+.usage-chart-legend-compaction { background: #9865a5; border-radius: 2px !important; transform: rotate(45deg); }
+.usage-chart-gaps { display: flex; gap: 6px; overflow-x: auto; padding: 7px 2px 11px; scrollbar-width: thin; }
+.usage-chart-gaps button { flex: 0 0 auto; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10px; }
+.usage-chart-gaps button.selected { border-color: #b78928; background: #fbf1dc; }
+.usage-chart-evidence { margin: 14px 0; padding: 14px; border: 1px solid #dce2d6; border-left: 3px solid #88a166; border-radius: 6px; background: #fbfcf9; overflow-wrap: anywhere; }
+.usage-chart-evidence h3 { margin: 3px 0 8px; font-size: 15px; font-weight: 600; }
+.usage-chart-evidence p { margin: 7px 0; font-size: 11px; }
+.usage-chart-actions { margin-top: 12px; }
+.usage-chart-actions button { font-size: 10px; }
+.usage-chart-pager { justify-content: space-between; margin: 14px 0; font-size: 10px; color: #697368; }
+.usage-chart-pager button { font-size: 10px; }
+.usage-chart-coverage { padding-top: 10px; border-top: 1px solid #edf0e8; color: #7b847b; font-size: 10px; line-height: 1.5; overflow-wrap: anywhere; }
+.usage-chart-coverage p { margin: 5px 0; }
+@media (max-width: 760px) {
+  .usage-chart-panel > summary { align-items: flex-start; flex-direction: column; gap: 4px; }
+  .usage-chart-body { padding: 0 12px 12px; }
+  .usage-chart-selectors { display: grid; }
+  .usage-chart-selectors select { width: 100%; min-width: 0; }
+  .usage-chart-scope { align-items: flex-start; flex-direction: column; gap: 4px; }
+}

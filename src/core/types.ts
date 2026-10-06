@@ -105,6 +105,85 @@ export interface UsageJump {
   status: ModelCall['status'];
   identityDetail: string;
 }
+export interface UsageChartObservation {
+  values: UsageValues;
+  ref: SourceRef;
+  matchingRefs: number;
+  responseNavigation?: ResponseNavigation;
+}
+export interface UsageChartPoint {
+  id: string;
+  ordinal: number;
+  firstLine: number;
+  actorId: string;
+  model?: string;
+  status: ModelCall['status'];
+  identityDetail: string;
+  input: number | null;
+  reason: string;
+  ref: SourceRef;
+  retainedRefs: number;
+  variantCount: number;
+  observation: UsageChartObservation;
+  sourceAvailable: boolean;
+}
+export type CompactionKind = 'claude-compact-boundary' | 'codex-compacted' | 'codex-context-compacted' | 'codex-compaction-representation';
+export interface CompactionMetadata {
+  preTokens?: number;
+  postTokens?: number;
+  cumulativeDroppedTokens?: number;
+  durationMs?: number;
+  replacementHistoryCount?: number;
+  preservedMessageCount?: number;
+  discoveredToolCount?: number;
+  recordedWindowNumber?: number;
+  trigger?: string;
+  flags?: Record<string, boolean>;
+}
+export interface CompactionMarker {
+  id: string;
+  kind: CompactionKind;
+  label: string;
+  boundary: 'recorded' | 'representation';
+  ref: SourceRef;
+  metadata: CompactionMetadata;
+  target?: { id: string; position: number };
+}
+export interface UsageChartCoverage {
+  sourceFamily: Family;
+  scanComplete: boolean;
+  indexComplete: boolean;
+  usageComplete: boolean;
+  usageLimited: boolean;
+  compactionCaptureComplete: boolean;
+  indexedRecords: number;
+  scannedLines: number;
+  pendingRecords: number;
+  unknownRecords: number;
+  malformedRecords: number;
+  limitedRecords: number;
+  recordLimit: number;
+  retainedCalls: number;
+  usageCallLimit: number;
+  usageReferenceLimit: number;
+  usageVariantLimit: number;
+  pointPageLimit: number;
+  runtimeCounterRecords: number;
+  retainedCompactions: number;
+  omittedCompactionCaptures: number;
+  compactionCaptureLimit: number;
+  markerPageLimit: number;
+  sourceEndLine: number;
+}
+export interface UsageChartPage {
+  points: UsageChartPoint[];
+  compactions: CompactionMarker[];
+  sourceRange: { firstLine: number; lastLine: number };
+  omittedCompactions: number;
+  after?: number;
+  total: number;
+  coverage: UsageChartCoverage;
+}
 export interface SearchMatch {
   ref: SourceRef;
   matchOffset: number;
