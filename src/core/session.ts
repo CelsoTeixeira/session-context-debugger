@@ -11,7 +11,7 @@ import { SourceSearch } from './search.js';
 import { SessionRelationships } from './relationships.js';
 import { MAX_ITEMS, MAX_RECORDS, PARSE_BYTES, PREVIEW_UNITS, scan } from './scanner.js';
 import { abortIfNeeded, DataError, Sources } from './source.js';
-import type { CoverageLedger, Overview, RecordMeta, RecordView, SearchView, SourceFile, SourceRef } from './types.js';
+import type { CoverageLedger, LedgerPage, Overview, RecordMeta, RecordView, ResponseView, SearchView, SourceFile, SourceRef, TimelineFilter, TimelineMap, TimelinePage, UsagePage } from './types.js';
 
 const ledger = (bytes: number): CoverageLedger => ({
   inspectedBytes: bytes, scannedBytes: 0, completeLines: 0, pendingBytes: 0,
@@ -26,10 +26,10 @@ const count = (counts: Record<string, number>, key?: string): void => {
 export class Session {
   readonly id = randomUUID();
   readonly controller = new AbortController();
-  readonly records = new Map<string, RecordMeta>();
-  readonly normalizer: Normalizer;
-  readonly timeline: Timeline;
-  readonly coverage: CoverageLedger;
+  private readonly records = new Map<string, RecordMeta>();
+  private readonly normalizer: Normalizer;
+  private readonly timeline: Timeline;
+  private readonly coverage: CoverageLedger;
   readonly relationships: SessionRelationships;
   state: Overview['state'] = 'indexing';
   error?: string;
@@ -134,6 +134,51 @@ export class Session {
         && !this.coverage.pendingBytes && !this.coverage.dispositions.limited && !this.coverage.dispositions.malformed),
       limits: { parseBytes: PARSE_BYTES, previewCodeUnits: PREVIEW_UNITS, maxRecords: MAX_RECORDS, maxItems: MAX_ITEMS },
     };
+  }
+  response(eventId: string | null): ResponseView {
+    const event = this.timeline.events.find(item => item.id === eventId);
+    if (!event) throw new DataError('unavailable-source', 'Choose an event in the retained timeline.', 404);
+    const coverage = this.coverage;
+    const complete = coverage.complete && this.records.size === coverage.completeLines && !this.timeline.omitted
+      && !coverage.pendingBytes && !coverage.dispositions.limited && !coverage.dispositions.malformed && !coverage.dispositions.unknown
+      && !this.normalizer.usageLimited;
+    return this.timeline.responses.view(event, this.normalizer.calls, complete);
+  }
+  usage(after: number, order: string): UsagePage {
+    if (order !== 'source' && order !== 'input') throw new DataError('invalid-request', 'Invalid usage order.');
+    const calls = [...this.normalizer.calls.values()];
+    if (order === 'input') {
+      const input = (call: typeof calls[number]) => call.status === 'resolved' && call.variants.length === 1 ? call.variants[0]!.values.input : null;
+      calls.sort((a, b) => {
+        const left = input(a), right = input(b);
+        return left === null ? right === null ? a.firstLine - b.firstLine : 1
+          : right === null ? -1 : right - left || a.firstLine - b.firstLine;
+      });
+    }
+    if (!Number.isSafeInteger(after) || after < 0 || after > calls.length) throw new DataError('invalid-cursor', 'Invalid usage cursor.');
+    const end = Math.min(calls.length, after + 20);
+    return { total: calls.length, after: end < calls.length ? end : undefined,
+      calls: calls.slice(after, end).map(call => ({ id: call.id, actorId: call.actorId, model: call.model,
+        identityDetail: call.identityDetail, status: call.status, firstLine: call.firstLine,
+        variants: call.variants.map(variant => ({ values: variant.values, ref: variant.refs[0]!, matchingRefs: variant.refs.length,
+          navigation: this.timeline.responseNavigation(variant.refs[0]!, variant.refs) })) })) };
+  }
+  events(after: number, kind: string, view: string | null): TimelinePage | TimelineMap {
+    if (!Number.isSafeInteger(after) || after < 0 || after > this.timeline.events.length) throw new DataError('invalid-cursor', 'Invalid timeline cursor.');
+    if (!['all', 'tools', 'user', 'instruction', 'assistant', 'message', 'tool-call', 'tool-result', 'reasoning', 'usage', 'snapshot', 'attachment', 'lifecycle', 'metadata', 'unknown'].includes(kind)) throw new DataError('invalid-request', 'Invalid event kind.');
+    if (view !== null && view !== 'map') throw new DataError('invalid-request', 'Invalid timeline view.');
+    const filter = kind as TimelineFilter;
+    if (view === 'map') return this.timeline.map(filter);
+    const coverage = this.coverage;
+    const complete = coverage.complete && this.records.size === coverage.completeLines
+      && !coverage.pendingBytes && !coverage.dispositions.limited && !coverage.dispositions.malformed && !coverage.dispositions.unknown;
+    return this.timeline.page(after, filter, complete);
+  }
+  ledger(after: number): LedgerPage {
+    if (!Number.isSafeInteger(after) || after < 0) throw new DataError('invalid-cursor', 'Invalid ledger cursor.');
+    const records = [...this.records.values()].filter(record => record.ref.line > after).slice(0, 50);
+    const last = records.at(-1)?.ref.line;
+    return { records, after: last && last < this.records.size ? last : undefined };
   }
   async record(refId: string, pointer: string | undefined, offset: number, signal?: AbortSignal): Promise<RecordView> {
     const searchRef = this.search?.record(refId)?.ref;

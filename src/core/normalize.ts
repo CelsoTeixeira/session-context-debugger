@@ -8,6 +8,7 @@ export class Normalizer {
   readonly items: EvidenceItem[] = [];
   readonly calls = new Map<string, ModelCall>();
   readonly warnings = new Set<string>();
+  usageLimited = false;
   limitedItems = 0;
   currentTurn?: string;
   constructor(readonly source: SourceFile) {}
@@ -27,7 +28,7 @@ export class Normalizer {
   }
   call(ref: SourceRef, pointer: string, usage: Obj, identity: string | undefined,
     values: UsageValues, model?: string): void {
-    if (this.calls.size >= 20_000) { this.warnings.add('Model-call index limit reached; usage coverage is incomplete.'); return; }
+    if (this.calls.size >= 20_000) { this.usageLimited = true; this.warnings.add('Model-call index limit reached; usage coverage is incomplete.'); return; }
     const actor = this.source.actorId ?? this.source.id;
     const id = actor + ':' + (identity ?? 'unassigned:' + ref.line);
     const original = numericFields(usage);
@@ -43,11 +44,11 @@ export class Normalizer {
       const variant = existing.variants.find(item => stable(item.original) === signature);
       if (variant) {
         if (variant.refs.length < 500) variant.refs.push(evidenceRef);
-        else this.warnings.add('Usage reference limit reached; all physical records remain in coverage.');
+        else { this.usageLimited = true; this.warnings.add('Usage reference limit reached; all physical records remain in coverage.'); }
       } else {
         existing.status = 'ambiguous';
         if (existing.variants.length < 100) existing.variants.push({ values, original, refs: [evidenceRef] });
-        else this.warnings.add('Usage variant limit reached; ambiguous observations excluded.');
+        else { this.usageLimited = true; this.warnings.add('Usage variant limit reached; ambiguous observations excluded.'); }
       }
     } else {
       this.calls.set(id, {

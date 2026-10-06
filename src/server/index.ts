@@ -9,7 +9,6 @@ import { T3Catalog } from '../core/t3.js';
 import { T3Links } from '../core/t3-links.js';
 import { Relationships } from '../core/relationships.js';
 import { object, string } from '../core/json.js';
-import type { TimelineFilter } from '../core/types.js';
 
 const uiRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../ui');
 const STATIC_TYPES: Record<string, string> = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml' };
@@ -110,15 +109,7 @@ export async function createApp(roots?: string[]) {
         }
         if (route === 'overview' && req.method === 'GET') return send(res, 200, { ok: true, data: session.overview() });
         if (route === 'response' && req.method === 'GET') {
-          const event = session.timeline.events.find(item => item.id === url.searchParams.get('eventId'));
-          if (!event) throw new DataError('unavailable-source', 'Choose an event in the retained timeline.', 404);
-          const coverage = session.coverage;
-          const complete = coverage.complete && session.records.size === coverage.completeLines && !session.timeline.omitted
-            && !coverage.pendingBytes && !coverage.dispositions.limited && !coverage.dispositions.malformed && !coverage.dispositions.unknown
-            && !session.normalizer.warnings.has('Model-call index limit reached; usage coverage is incomplete.')
-            && !session.normalizer.warnings.has('Usage variant limit reached; ambiguous observations excluded.')
-            && !session.normalizer.warnings.has('Usage reference limit reached; all physical records remain in coverage.');
-          return send(res, 200, { ok: true, data: session.timeline.responses.view(event, session.normalizer.calls, complete) });
+          return send(res, 200, { ok: true, data: session.response(url.searchParams.get('eventId')) });
         }
         if (route === 'search' && req.method === 'POST') {
           const body = await readBody(req);
@@ -132,36 +123,13 @@ export async function createApp(roots?: string[]) {
         if (route === 'usage' && req.method === 'GET') {
           const after = Number(url.searchParams.get('after') ?? 0);
           const order = url.searchParams.get('order') ?? 'source';
-          if (order !== 'source' && order !== 'input') throw new DataError('invalid-request', 'Invalid usage order.');
-          const calls = [...session.normalizer.calls.values()];
-          if (order === 'input') {
-            const input = (call: typeof calls[number]) => call.status === 'resolved' && call.variants.length === 1 ? call.variants[0]!.values.input : null;
-            calls.sort((a, b) => {
-              const left = input(a), right = input(b);
-              return left === null ? right === null ? a.firstLine - b.firstLine : 1
-                : right === null ? -1 : right - left || a.firstLine - b.firstLine;
-            });
-          }
-          if (!Number.isSafeInteger(after) || after < 0 || after > calls.length) throw new DataError('invalid-cursor', 'Invalid usage cursor.');
-          const end = Math.min(calls.length, after + 20);
-          return send(res, 200, { ok: true, data: { total: calls.length, after: end < calls.length ? end : undefined,
-            calls: calls.slice(after, end).map(call => ({ id: call.id, actorId: call.actorId, model: call.model,
-              identityDetail: call.identityDetail, status: call.status, firstLine: call.firstLine,
-              variants: call.variants.map(variant => ({ values: variant.values, ref: variant.refs[0], matchingRefs: variant.refs.length,
-                navigation: session.timeline.responseNavigation(variant.refs[0]!, variant.refs) })) })) } });
+          return send(res, 200, { ok: true, data: session.usage(after, order) });
         }
         if (route === 'events' && req.method === 'GET') {
           const after = Number(url.searchParams.get('after') ?? 0);
-          const filter = (url.searchParams.get('kind') ?? 'all') as TimelineFilter;
-          if (!Number.isSafeInteger(after) || after < 0 || after > session.timeline.events.length) throw new DataError('invalid-cursor', 'Invalid timeline cursor.');
-          if (!['all', 'tools', 'user', 'instruction', 'assistant', 'message', 'tool-call', 'tool-result', 'reasoning', 'usage', 'snapshot', 'attachment', 'lifecycle', 'metadata', 'unknown'].includes(filter)) throw new DataError('invalid-request', 'Invalid event kind.');
+          const kind = url.searchParams.get('kind') ?? 'all';
           const view = url.searchParams.get('view');
-          if (view !== null && view !== 'map') throw new DataError('invalid-request', 'Invalid timeline view.');
-          if (view === 'map') return send(res, 200, { ok: true, data: session.timeline.map(filter) });
-          const coverage = session.coverage;
-          const complete = coverage.complete && session.records.size === coverage.completeLines
-            && !coverage.pendingBytes && !coverage.dispositions.limited && !coverage.dispositions.malformed && !coverage.dispositions.unknown;
-          return send(res, 200, { ok: true, data: session.timeline.page(after, filter, complete) });
+          return send(res, 200, { ok: true, data: session.events(after, kind, view) });
         }
         if (route === 'cancel' && req.method === 'POST') {
           session.controller.abort();
@@ -169,10 +137,7 @@ export async function createApp(roots?: string[]) {
         }
         if (route === 'ledger' && req.method === 'GET') {
           const start = Number(url.searchParams.get('after') ?? 0);
-          if (!Number.isSafeInteger(start) || start < 0) throw new DataError('invalid-cursor', 'Invalid ledger cursor.');
-          const records = [...session.records.values()].filter(record => record.ref.line > start).slice(0, 50);
-          const last = records.at(-1)?.ref.line;
-          return send(res, 200, { ok: true, data: { records, after: last && last < session.records.size ? last : undefined } });
+          return send(res, 200, { ok: true, data: session.ledger(start) });
         }
         if (route.startsWith('records/') && req.method === 'GET') {
           const refId = route.slice('records/'.length);

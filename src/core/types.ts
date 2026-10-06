@@ -131,6 +131,10 @@ export interface RecordMeta {
   disposition: Disposition;
   reason?: string;
 }
+export interface LedgerPage {
+  records: RecordMeta[];
+  after?: number;
+}
 export interface CoverageLedger {
   inspectedBytes: number;
   scannedBytes: number;
