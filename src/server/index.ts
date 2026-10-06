@@ -93,7 +93,7 @@ export async function createApp(roots?: string[]) {
           const body = await readBody(req);
           return send(res, 202, { ok: true, data: await relationships.returnTo(sessions, string(body.token) ?? '', controller.signal) });
         }
-        const match = /^\/api\/sessions\/([0-9a-f-]+)\/(overview|events|usage|ledger|cancel|relationships\/(?:resolve|open|evidence)|search(?:\/cancel)?|records(?:\/r\d+)?)$/.exec(url.pathname);
+        const match = /^\/api\/sessions\/([0-9a-f-]+)\/(overview|events|response|usage|ledger|cancel|relationships\/(?:resolve|open|evidence)|search(?:\/cancel)?|records(?:\/r\d+)?)$/.exec(url.pathname);
         if (!match || !uuid.test(match[1] ?? '')) throw new DataError('not-found', 'API route unavailable.', 404);
         const session = sessions.get(match[1]!);
         const route = match[2]!;
@@ -109,6 +109,17 @@ export async function createApp(roots?: string[]) {
           return send(res, 200, { ok: true, data: await relationships.inspect(session, url.searchParams.get('resolutionId') ?? '', url.searchParams.get('evidenceId') ?? '', controller.signal) });
         }
         if (route === 'overview' && req.method === 'GET') return send(res, 200, { ok: true, data: session.overview() });
+        if (route === 'response' && req.method === 'GET') {
+          const event = session.timeline.events.find(item => item.id === url.searchParams.get('eventId'));
+          if (!event) throw new DataError('unavailable-source', 'Choose an event in the retained timeline.', 404);
+          const coverage = session.coverage;
+          const complete = coverage.complete && session.records.size === coverage.completeLines && !session.timeline.omitted
+            && !coverage.pendingBytes && !coverage.dispositions.limited && !coverage.dispositions.malformed && !coverage.dispositions.unknown
+            && !session.normalizer.warnings.has('Model-call index limit reached; usage coverage is incomplete.')
+            && !session.normalizer.warnings.has('Usage variant limit reached; ambiguous observations excluded.')
+            && !session.normalizer.warnings.has('Usage reference limit reached; all physical records remain in coverage.');
+          return send(res, 200, { ok: true, data: session.timeline.responses.view(event, session.normalizer.calls, complete) });
+        }
         if (route === 'search' && req.method === 'POST') {
           const body = await readBody(req);
           return send(res, 202, { ok: true, data: session.startSearch(string(body.query) ?? '') });

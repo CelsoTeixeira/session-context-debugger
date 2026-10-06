@@ -1,5 +1,6 @@
 import { array, identifier as string, number, numericFields, object, stable } from './json.js';
 import { MAX_ITEMS, PREVIEW_UNITS } from './scanner.js';
+import { claudeResponse, codexResponse } from './responses.js';
 import type { EvidenceItem, ModelCall, RecordMeta, SourceFile, SourceRef, UsageValues } from './types.js';
 import type { Obj } from './json.js';
 
@@ -61,7 +62,7 @@ export class Normalizer {
   codexUsage(ref: SourceRef, payload: Obj, pointer: string): void {
     const usage = object(payload.usage);
     if (!Object.keys(usage).length) return;
-    this.call(ref, pointer + '/usage', usage, string(payload.response_id), {
+    this.call(ref, pointer + '/usage', usage, codexResponse(this.source, payload)?.responseId, {
       input: number(usage.input_tokens), cached: number(usage.cached_input_tokens),
       cacheCreation: number(usage.cache_write_input_tokens), output: number(usage.output_tokens),
       reasoning: number(usage.reasoning_output_tokens),
@@ -74,11 +75,9 @@ export class Normalizer {
     const input = number(usage.input_tokens);
     const creation = number(usage.cache_creation_input_tokens);
     const cached = number(usage.cache_read_input_tokens);
-    const requestId = string(record.requestId);
-    const messageId = string(message.id);
-    const actor = string(record.agentId) ?? string(record.sessionId) ?? this.source.actorId;
+    const response = claudeResponse(this.source, record);
     this.call(ref, '/message/usage', usage,
-      requestId && messageId ? stable([actor, requestId, messageId]) : undefined, {
+      response ? stable([response.actorId, response.requestId, response.messageId]) : undefined, {
         input: input !== null && creation !== null && cached !== null ? input + creation + cached : null,
         cached, cacheCreation: creation, output: number(usage.output_tokens),
         reasoning: number(object(usage.output_tokens_details).thinking_tokens),

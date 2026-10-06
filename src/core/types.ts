@@ -52,6 +52,33 @@ export interface ModelCall {
   variants: UsageVariant[];
   firstLine: number;
 }
+export interface ResponseIdentity {
+  actorId: string;
+  requestId?: string;
+  messageId?: string;
+  responseId?: string;
+}
+export interface ResponseLink {
+  id: string;
+  position: number;
+  label: string;
+  ref: SourceRef;
+}
+export interface ResponseView {
+  identity?: ResponseIdentity;
+  detail: string;
+  complete: boolean;
+  events: ResponseLink[];
+  eventCount: number;
+  omittedEvents: number;
+  usageStatus: 'resolved' | 'ambiguous' | 'unknown';
+  variants: Array<{ values: UsageValues; ref: SourceRef; matchingRefs: number }>;
+  omittedVariants: number;
+  previous?: ResponseLink;
+  next?: ResponseLink;
+  position?: number;
+  total: number;
+}
 export interface UsageSummary {
   includedCalls: number;
   excludedCalls: number;

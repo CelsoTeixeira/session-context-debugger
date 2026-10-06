@@ -1,6 +1,7 @@
 import { array, identifier, object } from './json.js';
 import { timelineCategory, timelineCategoryMatches } from './timeline-category.js';
 import { measureCaptures } from './payload-size.js';
+import { claudeResponse, codexResponse, RecordedResponses } from './responses.js';
 import type { Obj } from './json.js';
 import type { EventKind, RecordMeta, ResponseNavigation, SourceFile, SourceRef, TimelineEvent, TimelineFilter, TimelineMap, TimelinePage } from './types.js';
 
@@ -15,14 +16,17 @@ export class Timeline {
   private readonly records = new Map<string, TimelineEvent[]>();
   private readonly tools = new Map<string, TimelineEvent[]>();
   omitted = 0;
-  constructor(readonly source: SourceFile) {}
+  readonly responses: RecordedResponses;
+  constructor(readonly source: SourceFile) { this.responses = new RecordedResponses(source); }
   allows(id: string, pointer: string): boolean { return this.fields.has(id + ':' + pointer); }
   capture(record: Obj | undefined, meta: RecordMeta): void {
     if (this.events.length >= MAX_EVENTS) { this.omitted++; return; }
     const start = this.events.length;
     const actorId = identifier(record?.agentId) ?? identifier(record?.sessionId) ?? this.source.actorId ?? this.source.id;
     const timestamp = identifier(record?.timestamp);
-    const add = (kind: EventKind, label: string, pointer?: string, value?: unknown, options: Partial<TimelineEvent> = {}) => {
+    const response = record && this.source.family === 'claude' ? claudeResponse(this.source, record)
+      : this.source.family === 'codex' && record?.type === 'token_usage_record' ? codexResponse(this.source, object(record.payload)) : undefined;
+    const add = (kind: EventKind, label: string, pointer?: string, value?: unknown, options: Partial<TimelineEvent> = {}, identity = response) => {
       if (this.events.length >= MAX_EVENTS) { this.omitted++; return; }
       const text = typeof value === 'string' ? value : '';
       const event: TimelineEvent = {
@@ -33,6 +37,7 @@ export class Timeline {
         preview: text.slice(0, PREVIEW), previewLimited: text.length > PREVIEW, ...options,
       };
       this.events.push(event);
+      this.responses.add(event, identity);
       const recordEvents = this.records.get(meta.ref.id) ?? [];
       recordEvents.push(event);
       this.records.set(meta.ref.id, recordEvents);
@@ -104,7 +109,7 @@ export class Timeline {
         const alias = object(payload.latest_token_usage_record);
         if (alias.usage !== undefined) add('usage', 'Embedded provider usage observation', '/payload/latest_token_usage_record/usage', undefined, {
           recordedId: identifier(alias.response_id), representation: 'metadata', detail: 'Usage alias candidate. The usage index reconciles matching recorded response identities and measurements; this is not another model call.',
-        });
+        }, codexResponse(this.source, alias));
       }
     } else if (record && this.source.family === 'claude') {
       const message = object(record.message);

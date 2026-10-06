@@ -4,6 +4,7 @@ import { timelineCategory, timelineCategoryMatches } from '../core/timeline-cate
 import { api } from './api';
 import { CategoryRanking, payloadSize } from './CategoryRanking';
 import { SourceSearch } from './SourceSearch';
+import { RecordedResponse } from './RecordedResponse';
 
 const categories: Array<[TimelineCategory, string]> = [
   ['user', 'User input'], ['instruction', 'Instructions'], ['assistant', 'Assistant'], ['message', 'Other message'],
@@ -22,6 +23,7 @@ export function Timeline({ overview, onInspect, onSourceNavigate, onRelation, us
   const [mapError, setMapError] = useState('');
   const [busy, setBusy] = useState(false);
   const [activeUsage, setActiveUsage] = useState<UsageJump>();
+  const [responseOpen, setResponseOpen] = useState(false);
   const [jumpRevision, setJumpRevision] = useState(0);
   const requestedEvent = useRef<string | undefined>(undefined);
   const edge = useRef<'first' | 'last'>('first');
@@ -176,6 +178,7 @@ export function Timeline({ overview, onInspect, onSourceNavigate, onRelation, us
         <div className="timeline-evidence"><span className="timeline-type">{categoryLabel(timelineCategory(selected))}</span><span>{selected.representation}</span><span>{selected.origin}</span>{selected.pairStatus ? <span className="badge amber">{selected.pairStatus}{!page.complete ? ' · coverage incomplete' : ''}</span> : null}</div>
         {selected.preview ? <p className="timeline-preview">{selected.preview}{selected.previewLimited ? '\n[Preview shortened; inspect source to continue.]' : ''}</p> : <p className="muted">Open the source to read the captured fields.</p>}
         <p className="muted">{selected.detail}</p>
+        {selected.role === 'assistant' || selected.kind === 'usage' || selected.kind === 'tool-call' || selected.kind === 'reasoning' ? <RecordedResponse key={overview.id} sessionId={overview.id} eventId={selected.id} state={overview.state} open={responseOpen} onToggle={setResponseOpen} onInspect={onInspect} onNavigate={link => { setActiveUsage(undefined); jumpTo(link.id, link.position); }} /> : null}
         <p className="muted">Captured field size: {selected.serializedBytes === null ? 'Unknown' : payloadSize(selected.serializedBytes)} after compact JSON encoding.{selected.allocatedBytes !== null && selected.allocatedBytes !== selected.serializedBytes ? ' Ranking allocates ' + payloadSize(selected.allocatedBytes) + ' here; overlapping captured fields share bytes once.' : ''}</p>
         <div className="pager timeline-related"><button onClick={() => onInspect(selected.ref)}>Inspect source ↗</button>{selected.related?.map((ref, i) => <button key={ref.id + ':' + ref.pointer + ':' + i} onClick={() => { if (kind !== 'all' && kind !== 'tools') setKind('all'); navigate(selected.relatedPositions![i]!); }}>Go to {selected.kind === 'tool-call' ? 'result' : 'call'} · line {ref.line}</button>)}{overview.relationships.links.filter(link => link.refs.some(ref => ref.id === selected.ref.id && (!ref.pointer || !selected.ref.pointer || ref.pointer === selected.ref.pointer || ref.pointer.startsWith(selected.ref.pointer + '/') || selected.ref.pointer.startsWith(ref.pointer + '/')))).map(link => <button key={link.id} onClick={() => onRelation(link.id)}>Find {link.direction} recording →</button>)}</div>
         <details className="timeline-identities"><summary>Recorded time and identifiers</summary><span className="path">Time: {selected.timestamp ?? 'unknown'}<br />Actor: {selected.actorId}<br />Recorded ID: {selected.recordedId ?? 'unknown'}<br />Tool ID: {selected.toolId ?? 'unknown'}</span></details>

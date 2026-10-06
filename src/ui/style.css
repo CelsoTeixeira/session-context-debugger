@@ -230,3 +230,15 @@ progress { width: 100%; height: 5px; accent-color: #819c61; }
 @media (max-width: 1200px) { .workspace.without-sidebar.with-inspector { grid-template-columns: minmax(0, 1fr); } }
 @media (max-width: 760px) { .header-actions { gap: 8px; } .app-header { min-height: 64px; height: auto; flex-wrap: wrap; gap: 8px; padding: 10px 15px; } }
 @media (max-width: 760px) { .workspace, .workspace.with-inspector { display: block; }.session-sidebar { position: static; height: auto; overflow: visible; border-right: 0; border-bottom: 1px solid #dfe3da; padding: 20px; }.source-list { max-height: 220px; overflow: auto; }.sidebar-heading { margin-top: 16px; }.main-content { padding: 18px; }.metrics { grid-template-columns: repeat(2, 1fr); row-gap: 20px; }.metrics > div:nth-child(3) { border: 0; padding-left: 0; }.with-inspector .inspector-wrapper { width: 100%; }.app-header { padding: 0 15px; }.local-indicator { font-size: 10px; }.brand strong { font-size: 12px; }.coverage-panel summary > span:last-child { float: none; display: block; margin-top: 5px; }.prompt-footer, .usage-footnote { flex-direction: column; }.empty-state { margin: 30px auto; }.empty-state h1 { font-size: 34px; }.coverage-counts { grid-template-columns: repeat(3, 1fr); } }
+.recorded-response { margin: 18px 0; border: 1px solid #dce2d4; border-radius: 7px; background: #fff; }
+.recorded-response > summary { cursor: pointer; padding: 13px 16px; font-weight: 600; }
+.response-content { padding: 0 16px 16px; }
+.response-content .panel-heading { flex-wrap: wrap; gap: 10px; }
+.response-variant { margin-top: 14px; padding-top: 14px; border-top: 1px solid #dce2d4; }
+.response-metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; margin: 16px 0; }
+.response-metrics span { display: block; color: #788572; font-size: 10px; margin-bottom: 4px; }
+.response-metrics strong { font-size: 20px; font-weight: 550; }
+.response-content .pager { flex-wrap: wrap; }
+.response-event-links { display: grid; gap: 8px; }
+.response-event-links > div { display: flex; flex-wrap: wrap; gap: 8px; }
+@media (max-width: 760px) { .response-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
