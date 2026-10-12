@@ -345,10 +345,32 @@ export interface TimelineEvent {
   previewLimited: boolean;
   toolId?: string;
   pairStatus?: 'paired' | 'orphan' | 'ambiguous' | 'unassigned';
-  related?: SourceRef[];
-  relatedPositions?: number[];
+  relationships?: TimelineRelationship[];
   serializedBytes: number | null;
   allocatedBytes: number | null;
+}
+export type TimelineRelationshipKind = 'tool-counterpart' | 'codex-item-representation' | 'claude-runtime-result';
+export type TimelineRelationshipBasis = 'recorded-tool-id-within-actor' | 'recorded-item.id-within-actor-thread'
+  | 'same-record-tool_use_id' | 'unique-same-record-tool_result';
+export interface TimelineRelationshipTarget {
+  id: string;
+  position: number;
+  label: string;
+  source: SourceRef;
+}
+export interface TimelineRelationshipLink {
+  kind: TimelineRelationshipKind;
+  basis: TimelineRelationshipBasis;
+  target: TimelineRelationshipTarget;
+}
+export interface TimelineRelationship {
+  kind: TimelineRelationshipKind;
+  status: 'linked' | 'orphan' | 'ambiguous' | 'unassigned';
+  basis?: TimelineRelationshipBasis;
+  links: TimelineRelationshipLink[];
+  omitted: number;
+  complete: boolean;
+  detail: string;
 }
 export interface TimelinePage {
   events: TimelineEvent[];

@@ -61,6 +61,13 @@
 .usage-chart-pager button { font-size: 10px; }
 .usage-chart-coverage { padding-top: 10px; border-top: 1px solid #edf0e8; color: #7b847b; font-size: 10px; line-height: 1.5; overflow-wrap: anywhere; }
 .usage-chart-coverage p { margin: 5px 0; }
+.timeline-relationships { display: grid; align-items: stretch; gap: 7px; width: 100%; }
+.timeline-relationship { display: grid; gap: 5px; min-width: 0; padding: 8px; border: 1px solid #edf0e8; border-radius: 5px; color: #6b756a; font-size: 10px; }
+.timeline-relationship-heading { display: flex; align-items: baseline; gap: 6px 12px; flex-wrap: wrap; color: #4a564d; }
+.timeline-relationship p { margin: 0; line-height: 1.45; }
+.timeline-relationship small { color: #7b847b; }
+.timeline-relationship-links { display: flex; flex-wrap: wrap; gap: 5px; }
+.timeline-relationship-links button { max-width: 100%; overflow-wrap: anywhere; text-align: left; font-size: 10px; }
 @media (max-width: 760px) {
   .usage-chart-panel > summary { align-items: flex-start; flex-direction: column; gap: 4px; }
   .usage-chart-body { padding: 0 12px 12px; }

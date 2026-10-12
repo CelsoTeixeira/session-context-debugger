@@ -3,31 +3,61 @@ import { timelineCategory, timelineCategoryMatches } from './timeline-category.j
 import { measureCaptures } from './payload-size.js';
 import { claudeResponse, codexResponse, RecordedResponses } from './responses.js';
 import type { Obj } from './json.js';
-import type { EventKind, RecordMeta, ResponseNavigation, SourceFile, SourceRef, TimelineEvent, TimelineFilter, TimelineMap, TimelinePage } from './types.js';
+import type { EventKind, RecordMeta, ResponseNavigation, SourceFile, SourceRef, TimelineEvent, TimelineFilter, TimelineMap, TimelinePage, TimelineRelationship, TimelineRelationshipBasis, TimelineRelationshipKind, TimelineRelationshipLink } from './types.js';
 
 const MAX_EVENTS = 40_000;
+const MAX_EVENT_LINKS = 20;
 const PREVIEW = 256;
 const matches = (event: TimelineEvent, filter: TimelineFilter): boolean => timelineCategoryMatches(timelineCategory(event), filter);
+type CodexItemSide = 'lifecycle' | 'response';
+interface CodexItemGroup { lifecycle: TimelineEvent[]; response: TimelineEvent[] }
+interface ClaudeRecordEvents {
+  runtime?: TimelineEvent;
+  runtimeToolId?: string;
+  results: TimelineEvent[];
+  resultIds: Set<string>;
+  resultsByToolId: Map<string, TimelineEvent[]>;
+  missingToolIds: number;
+  incomplete: boolean;
+}
+const relationshipLink = (kind: TimelineRelationshipKind, basis: TimelineRelationshipBasis, target: TimelineEvent): TimelineRelationshipLink => ({
+  kind, basis, target: { id: target.id, position: target.position, label: target.label.slice(0, 100), source: { ...target.ref } },
+});
+const otherEvents = (events: TimelineEvent[], source: TimelineEvent, limit: number): TimelineEvent[] =>
+  events.slice(0, limit + 1).filter(event => event.id !== source.id).slice(0, limit);
 
 // Only small metadata and previews survive the scan. Bodies stay behind refs.
 export class Timeline {
   readonly events: TimelineEvent[] = [];
   private readonly fields = new Set<string>();
   private readonly records = new Map<string, TimelineEvent[]>();
-  private readonly tools = new Map<string, TimelineEvent[]>();
+  private readonly tools = new Map<string, { calls: TimelineEvent[]; results: TimelineEvent[] }>();
+  private readonly codexItemGroups = new Map<string, CodexItemGroup>();
+  private readonly codexItemMembership = new Map<string, { key?: string; side: CodexItemSide }>();
+  private readonly claudeRecords = new Map<string, ClaudeRecordEvents>();
   omitted = 0;
   readonly responses: RecordedResponses;
   constructor(readonly source: SourceFile) { this.responses = new RecordedResponses(source); }
   allows(id: string, pointer: string): boolean { return this.fields.has(id + ':' + pointer); }
   capture(record: Obj | undefined, meta: RecordMeta): void {
-    if (this.events.length >= MAX_EVENTS) { this.omitted++; return; }
+    if (this.events.length >= MAX_EVENTS) {
+      this.omitted++;
+      const claude = this.claudeRecords.get(meta.ref.id);
+      if (claude) claude.incomplete = true;
+      return;
+    }
     const start = this.events.length;
     const actorId = identifier(record?.agentId) ?? identifier(record?.sessionId) ?? this.source.actorId ?? this.source.id;
     const timestamp = identifier(record?.timestamp);
     const response = record && this.source.family === 'claude' ? claudeResponse(this.source, record)
       : this.source.family === 'codex' && record?.type === 'token_usage_record' ? codexResponse(this.source, object(record.payload)) : undefined;
     const add = (kind: EventKind, label: string, pointer?: string, value?: unknown, options: Partial<TimelineEvent> = {}, identity = response) => {
-      if (this.events.length >= MAX_EVENTS) { this.omitted++; return; }
+      if (this.events.length >= MAX_EVENTS) {
+        this.omitted++;
+        const claude = this.claudeRecords.get(meta.ref.id);
+        if (claude) claude.incomplete = true;
+        return;
+      }
       const text = typeof value === 'string' ? value : '';
       const event: TimelineEvent = {
         id: meta.ref.id + ':event:' + (this.events.length - start), position: this.events.length, ref: { ...meta.ref, pointer },
@@ -44,9 +74,44 @@ export class Timeline {
       if (pointer) this.fields.add(meta.ref.id + ':' + pointer);
       if (event.toolId && (kind === 'tool-call' || kind === 'tool-result')) {
         const key = JSON.stringify([event.actorId, event.toolId]);
-        const group = this.tools.get(key) ?? [];
-        group.push(event);
+        const group = this.tools.get(key) ?? { calls: [], results: [] };
+        (kind === 'tool-call' ? group.calls : group.results).push(event);
         this.tools.set(key, group);
+      }
+      if (this.source.family === 'codex' && record) {
+        const payload = object(record.payload);
+        const lifecycle = record.type === 'item_started' || record.type === 'item_completed'
+          || record.type === 'event_msg' && (payload.type === 'item_started' || payload.type === 'item_completed');
+        const side: CodexItemSide | undefined = record.type === 'response_item' && options.representation === 'primary' ? 'response'
+          : lifecycle && options.representation === 'metadata' ? 'lifecycle' : undefined;
+        if (side) {
+          const item = side === 'response' ? payload : object(payload.item);
+          const itemId = identifier(item.id);
+          const threadId = identifier(record.thread_id) ?? identifier(payload.thread_id) ?? this.source.actorId ?? this.source.id;
+          const key = itemId ? JSON.stringify([this.source.id, event.actorId, threadId, itemId]) : undefined;
+          this.codexItemMembership.set(event.id, { key, side });
+          if (key) {
+            const group = this.codexItemGroups.get(key) ?? { lifecycle: [], response: [] };
+            group[side].push(event);
+            this.codexItemGroups.set(key, group);
+          }
+        }
+      }
+      if (this.source.family === 'claude' && record && (pointer === '/toolUseResult' && kind === 'metadata' || kind === 'tool-result')) {
+        const group = this.claudeRecords.get(meta.ref.id) ?? { results: [], resultIds: new Set<string>(), resultsByToolId: new Map<string, TimelineEvent[]>(), missingToolIds: 0, incomplete: false };
+        if (pointer === '/toolUseResult' && kind === 'metadata') {
+          group.runtime = event;
+          group.runtimeToolId = identifier(object(record.toolUseResult).tool_use_id);
+        } else if (kind === 'tool-result') {
+          group.results.push(event);
+          group.resultIds.add(event.id);
+          if (event.toolId) {
+            const byId = group.resultsByToolId.get(event.toolId) ?? [];
+            byId.push(event);
+            group.resultsByToolId.set(event.toolId, byId);
+          } else group.missingToolIds++;
+        }
+        this.claudeRecords.set(meta.ref.id, group);
       }
     };
     if (record && this.source.family === 'codex') {
@@ -134,8 +199,8 @@ export class Timeline {
         if (message.usage !== undefined) add('usage', 'Provider usage', '/message/usage', undefined, {
           recordedId: identifier(message.id), detail: 'Recorded message usage. Request ID: ' + (identifier(record.requestId) ?? 'unknown') + '. Identical measurements are reconciled separately in usage groups.',
         });
-        if (record.toolUseResult !== undefined) add('metadata', 'Runtime toolUseResult copy', '/toolUseResult', undefined, {
-          representation: 'metadata', detail: 'Runtime copy on the same record as tool results. Retained separately; not another execution or another primary result.',
+        if (record.toolUseResult !== undefined) add('metadata', 'Runtime toolUseResult metadata', '/toolUseResult', undefined, {
+          representation: 'metadata', detail: 'Runtime result metadata recorded on this physical record. It remains a separate representation; a relationship does not establish identical content, another execution, request membership, or active inclusion.',
         });
       } else if (record.type === 'attachment') {
         const diagnostic = object(record.attachment).type === 'prompt_snapshot';
@@ -189,13 +254,15 @@ export class Timeline {
     for (; position < this.events.length && events.length < 50; position++) {
       const event = this.events[position]!;
       if (!matches(event, filter)) continue;
-      if (event.kind !== 'tool-call' && event.kind !== 'tool-result') { events.push(event); continue; }
-      const group = event.toolId ? this.tools.get(JSON.stringify([event.actorId, event.toolId])) ?? [] : [];
-      const calls = group.filter(item => item.kind === 'tool-call');
-      const results = group.filter(item => item.kind === 'tool-result');
-      const opposite = event.kind === 'tool-call' ? results : calls;
-      events.push({ ...event, pairStatus: !event.toolId ? 'unassigned' : !opposite.length ? 'orphan' : calls.length === 1 && results.length === 1 ? 'paired' : 'ambiguous', related: opposite.slice(0, 20).map(item => item.ref), relatedPositions: opposite.slice(0, 20).map(item => item.position),
-        detail: event.detail + ' Pairing uses only recorded tool ID within this actor. At most 20 opposite references are displayed.' });
+      const relationships = this.eventRelationships(event, scanComplete);
+      if (event.kind === 'tool-call' || event.kind === 'tool-result') {
+        const group = event.toolId ? this.tools.get(JSON.stringify([event.actorId, event.toolId])) : undefined;
+        const calls = group?.calls ?? [];
+        const results = group?.results ?? [];
+        const opposite = event.kind === 'tool-call' ? results : calls;
+        const pairStatus = !event.toolId ? 'unassigned' : !opposite.length ? 'orphan' : calls.length === 1 && results.length === 1 ? 'paired' : 'ambiguous';
+        events.push({ ...event, pairStatus, relationships });
+      } else events.push({ ...event, ...(relationships.length ? { relationships } : {}) });
     }
     let before: number | undefined;
     for (let i = after - 1, found = 0; i >= 0 && found < 50; i--) {
@@ -230,5 +297,115 @@ export class Timeline {
       bins.push(bin);
     }
     return { bins, total: this.events.length, matching, omitted: this.omitted, ranking: [...ranking.values()] };
+  }
+  private eventRelationships(event: TimelineEvent, scanComplete: boolean): TimelineRelationship[] {
+    const relationships: TimelineRelationship[] = [];
+    if (event.kind === 'tool-call' || event.kind === 'tool-result') relationships.push(this.toolRelationship(event, scanComplete));
+    const membership = this.codexItemMembership.get(event.id);
+    if (membership) relationships.push(this.codexItemRelationship(event, membership, scanComplete));
+    const claude = this.claudeRelationship(event, scanComplete);
+    if (claude) relationships.push(claude);
+    return relationships;
+  }
+  private toolRelationship(event: TimelineEvent, scanComplete: boolean): TimelineRelationship {
+    const group = event.toolId ? this.tools.get(JSON.stringify([event.actorId, event.toolId])) : undefined;
+    const calls = group?.calls ?? [];
+    const results = group?.results ?? [];
+    const opposite = event.kind === 'tool-call' ? results : calls;
+    const status: TimelineRelationship['status'] = !event.toolId ? 'unassigned' : !opposite.length ? 'orphan' : calls.length === 1 && results.length === 1 ? 'linked' : 'ambiguous';
+    const kind: TimelineRelationshipKind = 'tool-counterpart';
+    const basis: TimelineRelationshipBasis | undefined = event.toolId ? 'recorded-tool-id-within-actor' : undefined;
+    const links = opposite.slice(0, MAX_EVENT_LINKS).map(target => relationshipLink(kind, basis!, target));
+    const omitted = Math.max(0, opposite.length - links.length);
+    return { kind, status, basis, links, omitted, complete: scanComplete && !this.omitted && !omitted,
+      detail: basis ? 'Recorded tool ID within this source actor; counterpart links keep the existing call/result semantics.'
+        : 'No recorded tool ID; the counterpart remains unassigned.' };
+  }
+  private codexItemRelationship(event: TimelineEvent, membership: { key?: string; side: CodexItemSide }, scanComplete: boolean): TimelineRelationship {
+    const kind: TimelineRelationshipKind = 'codex-item-representation';
+    if (!membership.key) return { kind, status: 'unassigned', links: [], omitted: 0, complete: scanComplete && !this.omitted,
+      detail: 'No explicit recorded item.id; no link is inferred from text, timing, or proximity.' };
+    const group = this.codexItemGroups.get(membership.key)!;
+    const lifecycleTargets = membership.side === 'response' ? group.lifecycle : otherEvents(group.lifecycle, event, MAX_EVENT_LINKS);
+    const responseTargets = membership.side === 'lifecycle' ? group.response.slice(0, MAX_EVENT_LINKS) : [];
+    const selected = membership.side === 'response' ? lifecycleTargets
+      : [...responseTargets, ...otherEvents(group.lifecycle, event, Math.max(0, MAX_EVENT_LINKS - responseTargets.length))];
+    const total = membership.side === 'response' ? group.lifecycle.length : group.response.length + Math.max(0, group.lifecycle.length - 1);
+    const basis: TimelineRelationshipBasis = 'recorded-item.id-within-actor-thread';
+    const links = selected.slice(0, MAX_EVENT_LINKS).map(target => relationshipLink(kind, basis, target));
+    const omitted = Math.max(0, total - links.length);
+    const detail = links.length
+      ? 'Recorded item.id matches within this source actor/thread. Content blocks remain distinct; this does not prove identical content, another execution, request membership, or active inclusion.'
+      : 'Recorded item.id is present, but no other lifecycle/content event with that ID is retained within this source actor/thread.';
+    return { kind, status: links.length ? 'linked' : 'orphan', basis, links, omitted, complete: scanComplete && !this.omitted && !omitted, detail };
+  }
+  private claudeRelationship(event: TimelineEvent, scanComplete: boolean): TimelineRelationship | undefined {
+    if (this.source.family !== 'claude') return undefined;
+    const group = this.claudeRecords.get(event.ref.id);
+    if (!group || event.id !== group.runtime?.id && !group.resultIds.has(event.id)) return undefined;
+    const kind: TimelineRelationshipKind = 'claude-runtime-result';
+    const isRuntime = event.id === group.runtime?.id;
+    const candidates = group.runtimeToolId ? group.resultsByToolId.get(group.runtimeToolId) ?? [] : group.results;
+    let status: TimelineRelationship['status'] = 'unassigned';
+    let basis: TimelineRelationshipBasis | undefined;
+    let targets: TimelineEvent[] = [];
+    let targetCount = 0;
+    let detail: string;
+    if (group.runtime && group.runtimeToolId) {
+      if (candidates.length) {
+        basis = 'same-record-tool_use_id';
+        targets = isRuntime ? candidates.slice(0, MAX_EVENT_LINKS) : event.toolId === group.runtimeToolId ? [group.runtime] : [];
+        targetCount = isRuntime ? candidates.length : targets.length;
+        const uncertainCandidates = group.missingToolIds > 0 || group.incomplete;
+        status = candidates.length === 1 && !uncertainCandidates ? 'linked' : 'ambiguous';
+        detail = candidates.length === 1 && !uncertainCandidates
+          ? 'Recorded tool_use_id matches the runtime and tool_result representations on this physical record; content remains independent.'
+          : 'Recorded tool_use_id matches ' + candidates.length.toLocaleString() + ' retained tool_result blocks' + (group.missingToolIds ? '; ' + group.missingToolIds.toLocaleString() + ' result blocks lack IDs.' : '.') + (group.incomplete ? ' Record indexing is incomplete.' : ' Each candidate remains separate.');
+      } else if (group.missingToolIds) {
+        status = 'ambiguous';
+        detail = 'Runtime tool_use_id is recorded, but same-record tool_result blocks lack an ID to confirm or reject the match.';
+      } else {
+        detail = 'No retained same-record tool_result has the runtime tool_use_id.';
+      }
+    } else if (group.runtime && !group.runtimeToolId) {
+      if (group.results.length === 1 && !group.incomplete) {
+        basis = 'unique-same-record-tool_result';
+        targets = isRuntime ? [group.results[0]!] : [group.runtime];
+        targetCount = 1;
+        status = 'linked';
+        detail = 'One retained tool_result block is present on this physical record. Runtime metadata remains separate; this does not establish identical content, request membership, or another execution.';
+      } else if (group.results.length > 1 || group.results.length === 1 && group.incomplete) {
+        status = 'ambiguous';
+        detail = group.results.length + ' retained same-record tool_result candidates' + (group.incomplete ? '; record indexing is incomplete, so uniqueness is unknown.' : '; no candidate is selected without a recorded ID.');
+      } else if (group.incomplete) {
+        status = 'ambiguous';
+        detail = 'Record indexing is incomplete; the presence of a same-record tool_result is unknown.';
+      } else {
+        detail = 'No same-record tool_result block is retained.';
+      }
+    } else if (group.incomplete) {
+      status = 'ambiguous';
+      detail = 'Record indexing is incomplete; runtime toolUseResult presence is unknown.';
+    } else if (group.results.length > 1) {
+      status = 'ambiguous';
+      detail = group.results.length + ' same-record tool_result candidates have no runtime ID; no candidate is selected.';
+    } else {
+      detail = 'No runtime toolUseResult metadata is retained on this physical record.';
+    }
+    if (!isRuntime && group.runtime && group.runtimeToolId && event.toolId !== group.runtimeToolId) {
+      targets = []; targetCount = 0;
+      if (event.toolId) {
+        status = 'unassigned'; basis = undefined;
+        detail = 'This tool_result has no matching recorded tool_use_id for the same-record runtime metadata.';
+      } else {
+        status = 'ambiguous'; basis = undefined;
+        detail = 'This same-record tool_result has no recorded tool_use_id to confirm or reject the runtime match.';
+      }
+    } else if (!isRuntime && group.runtime && !group.runtimeToolId && group.results.length !== 1) {
+      targets = []; targetCount = 0;
+    } else if (!isRuntime && !group.runtime) { targets = []; targetCount = 0; }
+    const links = targets.slice(0, MAX_EVENT_LINKS).map(target => relationshipLink(kind, basis!, target));
+    const omitted = Math.max(0, targetCount - links.length);
+    return { kind, status, basis, links, omitted, complete: scanComplete && !this.omitted && !group.incomplete && !omitted, detail };
   }
 }

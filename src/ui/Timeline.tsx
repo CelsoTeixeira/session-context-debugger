@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import type { Overview, SourceRef, TimelineCategory, TimelineFilter, TimelineMap, TimelinePage, UsageJump } from '../core/types';
+import type { Overview, SourceRef, TimelineCategory, TimelineFilter, TimelineMap, TimelinePage, TimelineRelationship, TimelineRelationshipBasis, TimelineRelationshipKind, UsageJump } from '../core/types';
 import { timelineCategory, timelineCategoryMatches } from '../core/timeline-category';
 import { api } from './api';
 import { CategoryRanking, payloadSize } from './CategoryRanking';
@@ -13,6 +13,20 @@ const categories: Array<[TimelineCategory, string]> = [
   ['snapshot', 'Snapshot'], ['attachment', 'Attachment'], ['lifecycle', 'Lifecycle'], ['metadata', 'Metadata'], ['unknown', 'Unknown'],
 ];
 const categoryLabel = (category: TimelineCategory): string => categories.find(([key]) => key === category)![1];
+const relationshipLabel: Record<TimelineRelationshipKind, string> = {
+  'tool-counterpart': 'Tool call/result counterpart',
+  'codex-item-representation': 'Codex item lifecycle/content',
+  'claude-runtime-result': 'Claude runtime result representation',
+};
+const relationshipStatusLabel: Record<TimelineRelationship['status'], string> = {
+  linked: 'linked', orphan: 'no counterpart retained', ambiguous: 'ambiguous', unassigned: 'unassigned',
+};
+const relationshipBasisLabel: Record<TimelineRelationshipBasis, string> = {
+  'recorded-tool-id-within-actor': 'recorded tool ID within actor',
+  'recorded-item.id-within-actor-thread': 'recorded item.id within actor/thread',
+  'same-record-tool_use_id': 'same-record tool_use_id',
+  'unique-same-record-tool_result': 'unique tool_result on the same record',
+};
 
 export function Timeline({ overview, onInspect, onSourceNavigate, onRelation, usageJump }: { overview: Overview; onInspect: (ref: SourceRef, offset?: number) => void; onSourceNavigate: () => void; onRelation: (id: string) => void; usageJump?: UsageJump }) {
   const [kind, setKind] = useState<TimelineFilter>('all');
@@ -20,6 +34,7 @@ export function Timeline({ overview, onInspect, onSourceNavigate, onRelation, us
   const [page, setPage] = useState<TimelinePage>();
   const [map, setMap] = useState<TimelineMap>();
   const [selectedId, setSelectedId] = useState<string>();
+  const [targetUnavailable, setTargetUnavailable] = useState(false);
   const [error, setError] = useState('');
   const [mapError, setMapError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -31,11 +46,12 @@ export function Timeline({ overview, onInspect, onSourceNavigate, onRelation, us
   const focusOnLoad = useRef(false);
   const loadedCursor = useRef(-1);
   const markers = useRef<HTMLDivElement>(null);
-  const selected = page?.events.find(event => event.id === selectedId) ?? page?.events[0];
+  const selected = page?.events.find(event => event.id === selectedId) ?? (!targetUnavailable && !requestedEvent.current ? page?.events[0] : undefined);
   const selectedIndex = page?.events.findIndex(event => event.id === selected?.id) ?? -1;
   function jumpTo(id: string, position: number) {
     // Clear any blocking filter and include nearby records without assigning
     // them to a request. A revision also reloads repeated same-range jumps.
+    setTargetUnavailable(false);
     setKind('all');
     navigate(Math.max(0, position - 10));
     requestedEvent.current = id;
@@ -75,11 +91,13 @@ export function Timeline({ overview, onInspect, onSourceNavigate, onRelation, us
         setPage(value);
         const requested = requestedEvent.current;
         requestedEvent.current = undefined;
-        if (requested && !value.events.some(event => event.id === requested)) {
+        const requestedFound = requested ? value.events.some(event => event.id === requested) : false;
+        setTargetUnavailable(Boolean(requested && !requestedFound));
+        if (requested && !requestedFound) {
           focusOnLoad.current = false;
-          setError('The selected target is unavailable within this timeline range. Inspect its source instead.');
+          setError('The selected event ID was not returned by this timeline page. No substitute was selected; inspect its source instead.');
         }
-        setSelectedId(old => requested && value.events.some(event => event.id === requested) ? requested
+        setSelectedId(old => requested ? requestedFound ? requested : undefined
           : value.events.some(event => event.id === old) ? old : (edge.current === 'last' ? value.events.at(-1) : value.events[0])?.id);
       })
       .catch(error => { if (!controller.signal.aborted) setError((error as Error).message); })
@@ -96,6 +114,7 @@ export function Timeline({ overview, onInspect, onSourceNavigate, onRelation, us
   }, [overview.id, overview.state, kind]);
   function navigate(position: number, selection: 'first' | 'last' = 'first') {
     requestedEvent.current = undefined;
+    setTargetUnavailable(false);
     edge.current = selection;
     loadedCursor.current = -1;
     setSelectedId(undefined);
@@ -188,7 +207,15 @@ export function Timeline({ overview, onInspect, onSourceNavigate, onRelation, us
         <p className="muted">{selected.detail}</p>
         {selected.role === 'assistant' || selected.kind === 'usage' || selected.kind === 'tool-call' || selected.kind === 'reasoning' ? <RecordedResponse key={overview.id} sessionId={overview.id} eventId={selected.id} state={overview.state} open={responseOpen} onToggle={setResponseOpen} onInspect={onInspect} onNavigate={link => { setActiveUsage(undefined); jumpTo(link.id, link.position); }} /> : null}
         <p className="muted">Captured field size: {selected.serializedBytes === null ? 'Unknown' : payloadSize(selected.serializedBytes)} after compact JSON encoding.{selected.allocatedBytes !== null && selected.allocatedBytes !== selected.serializedBytes ? ' Ranking allocates ' + payloadSize(selected.allocatedBytes) + ' here; overlapping captured fields share bytes once.' : ''}</p>
-        <div className="pager timeline-related"><button onClick={() => onInspect(selected.ref)}>Inspect source ↗</button>{selected.related?.map((ref, i) => <button key={ref.id + ':' + ref.pointer + ':' + i} onClick={() => { if (kind !== 'all' && kind !== 'tools') setKind('all'); navigate(selected.relatedPositions![i]!); }}>Go to {selected.kind === 'tool-call' ? 'result' : 'call'} · line {ref.line}</button>)}{overview.relationships.links.filter(link => link.refs.some(ref => ref.id === selected.ref.id && (!ref.pointer || !selected.ref.pointer || ref.pointer === selected.ref.pointer || ref.pointer.startsWith(selected.ref.pointer + '/') || selected.ref.pointer.startsWith(ref.pointer + '/')))).map(link => <button key={link.id} onClick={() => onRelation(link.id)}>Find {link.direction} recording →</button>)}</div>
+        <div className="pager timeline-related"><button onClick={() => onInspect(selected.ref)}>Inspect source ↗</button>{overview.relationships.links.filter(link => link.refs.some(ref => ref.id === selected.ref.id && (!ref.pointer || !selected.ref.pointer || ref.pointer === selected.ref.pointer || ref.pointer.startsWith(selected.ref.pointer + '/') || selected.ref.pointer.startsWith(ref.pointer + '/')))).map(link => <button key={link.id} onClick={() => onRelation(link.id)}>Find {link.direction} recording →</button>)}
+          {selected.relationships?.length ? <div className="timeline-relationships">{selected.relationships.map((relationship, index) => <section className="timeline-relationship" key={relationship.kind + ':' + index}>
+            <div className="timeline-relationship-heading"><strong>{relationshipLabel[relationship.kind]} · {relationshipStatusLabel[relationship.status]}</strong>{relationship.basis ? <span>Basis: {relationshipBasisLabel[relationship.basis]}</span> : null}</div>
+            <p>{relationship.detail}</p>
+            {relationship.links.length ? <div className="timeline-relationship-links">{relationship.links.map((link, linkIndex) => <button key={link.kind + ':' + link.target.id + ':' + linkIndex} title={'Basis: ' + relationshipBasisLabel[link.basis] + (link.target.source.pointer ? ' · ' + link.target.source.pointer : '')} onClick={() => jumpTo(link.target.id, link.target.position)}>Go to {link.target.label} · event {link.target.position + 1} · line {link.target.source.line}{link.target.source.pointer ? ' · ' + link.target.source.pointer : ''}</button>)}</div> : null}
+            {relationship.omitted ? <small>{relationship.omitted.toLocaleString()} relationship targets omitted by the per-event link cap.</small> : null}
+            {!relationship.complete ? <small>Relationship coverage is incomplete within the retained index.</small> : null}
+          </section>)}</div> : null}
+        </div>
         <details className="timeline-identities"><summary>Recorded time and identifiers</summary><span className="path">Time: {selected.timestamp ?? 'unknown'}<br />Actor: {selected.actorId}<br />Recorded ID: {selected.recordedId ?? 'unknown'}<br />Tool ID: {selected.toolId ?? 'unknown'}</span></details>
       </article> : null}
       <p className="muted timeline-coverage">{page.complete ? 'Event coverage complete within this snapshot.' : 'Event coverage incomplete; see source coverage below.'} Index limit: {page.maxEvents.toLocaleString()} events.{page.omitted ? ' Additional event/record captures omitted: ' + page.omitted.toLocaleString() + '.' : ''} Snapshots, runtime copies, and unknown records remain separate evidence. Missing reasoning does not mean none occurred.</p>
