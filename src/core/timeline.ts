@@ -68,6 +68,7 @@ export class Timeline {
       };
       this.events.push(event);
       this.responses.add(event, identity);
+      if (!identity && this.capturedAssistantRecord(record, pointer, event)) this.responses.addCapturedRecord(event);
       const recordEvents = this.records.get(meta.ref.id) ?? [];
       recordEvents.push(event);
       this.records.set(meta.ref.id, recordEvents);
@@ -217,6 +218,22 @@ export class Timeline {
         });
     }
     measureCaptures(record, this.events.slice(start));
+  }
+  private capturedAssistantRecord(record: Obj | undefined, pointer: string | undefined, event: TimelineEvent): boolean {
+    if (!record || event.representation !== 'primary') return false;
+    if (this.source.family === 'codex' && record.type === 'response_item') {
+      const payload = object(record.payload);
+      if (payload.type === 'message') return payload.role === 'assistant' && event.role === 'assistant'
+        && event.kind !== 'tool-result' && event.kind !== 'usage';
+      if (payload.type === 'reasoning') return event.kind === 'reasoning';
+      return ['function_call', 'custom_tool_call', 'web_search_call', 'local_shell_call'].includes(String(payload.type))
+        && event.kind === 'tool-call';
+    }
+    if (this.source.family === 'claude' && record.type === 'assistant' && object(record.message).role === 'assistant'
+      && pointer && (pointer === '/message/content' || pointer.startsWith('/message/content/'))) {
+      return event.kind !== 'tool-result' && event.kind !== 'usage';
+    }
+    return false;
   }
   responseNavigation(ref: SourceRef, matchingRefs: readonly SourceRef[] = [ref]): ResponseNavigation | undefined {
     // Matching refs already belong to one reconciled identity/measurement.

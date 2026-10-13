@@ -64,21 +64,50 @@ export interface ResponseLink {
   label: string;
   ref: SourceRef;
 }
-export interface ResponseView {
-  identity?: ResponseIdentity;
+export interface ResponseGroupView {
   detail: string;
   complete: boolean;
   events: ResponseLink[];
   eventCount: number;
   omittedEvents: number;
+  previous?: ResponseLink;
+  next?: ResponseLink;
+  position: number;
+  total: number;
+}
+export interface ProviderResponseView extends ResponseGroupView {
+  groupKind: 'provider-response';
+  basis: 'recorded-provider-identifiers';
+  identity: ResponseIdentity;
   usageStatus: 'resolved' | 'ambiguous' | 'unknown';
   variants: Array<{ values: UsageValues; ref: SourceRef; matchingRefs: number }>;
   omittedVariants: number;
-  previous?: ResponseLink;
-  next?: ResponseLink;
-  position?: number;
+}
+export interface CapturedRecordResponseView extends ResponseGroupView {
+  groupKind: 'captured-record';
+  basis: 'same-physical-record';
+  source: SourceRef;
+  actorId: string;
+  requestAssociation: 'unknown';
+  providerUsageAssociation: 'unknown';
+  usageStatus: 'unknown';
+  variants: [];
+  omittedVariants: 0;
+}
+export interface UnknownResponseView {
+  groupKind: 'unknown';
+  basis: 'none';
+  detail: string;
+  complete: boolean;
+  events: [];
+  eventCount: 0;
+  omittedEvents: 0;
+  usageStatus: 'unknown';
+  variants: [];
+  omittedVariants: 0;
   total: number;
 }
+export type ResponseView = ProviderResponseView | CapturedRecordResponseView | UnknownResponseView;
 export interface UsageSummary {
   includedCalls: number;
   excludedCalls: number;
