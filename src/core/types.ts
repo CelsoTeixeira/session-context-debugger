@@ -213,6 +213,150 @@ export interface UsageChartPage {
   total: number;
   coverage: UsageChartCoverage;
 }
+export type ContextFieldState = 'missing' | 'null' | 'recorded' | 'malformed' | 'over-limit';
+export type ContextScalar = string | number | boolean;
+export interface ContextField {
+  state: ContextFieldState;
+  value?: ContextScalar;
+  truncated?: boolean;
+  ref?: SourceRef;
+}
+export interface ContextList<T> {
+  name?: string;
+  state: ContextFieldState;
+  count?: number;
+  items: T[];
+  omitted: number;
+  ref?: SourceRef;
+}
+export interface ContextOwnerAxis {
+  state: 'recorded' | 'missing' | 'null' | 'malformed' | 'over-limit' | 'selected-source';
+  value?: string;
+  basis: 'source-record' | 'inherited-source-record' | 'selected-source-identity' | 'unknown-source-instance';
+  ref?: SourceRef;
+  truncated?: boolean;
+}
+export interface ContextWindowOwner {
+  recordedAgent: ContextOwnerAxis;
+  selectedSourceActor: ContextOwnerAxis;
+  providerSession: ContextOwnerAxis;
+  rootSession: ContextOwnerAxis;
+  scopeKey: string;
+  scopeBasis: 'recorded-actor-and-session' | 'recorded-partial-scope' | 'unknown-source-instance';
+  sourceInstanceId: string;
+}
+export interface ContextReplacementEntry {
+  state: 'object' | 'null' | 'malformed';
+  ref: SourceRef;
+  type: ContextField;
+  role: ContextField;
+  id: ContextField;
+}
+export interface ContextMetadataEntry {
+  state: 'object' | 'null' | 'malformed';
+  ref: SourceRef;
+  keys: string[];
+  omittedKeys: number;
+}
+export interface ContextRetainedEntry {
+  state: 'object' | 'null' | 'malformed';
+  ref: SourceRef;
+  fields: Array<{ name: string; field: ContextField }>;
+}
+export interface ContextEvidenceFields {
+  containers: Array<{ name: string; field: ContextField }>;
+  boundaryUuid: ContextField;
+  counters: Array<{ name: string; field: ContextField }>;
+  triggerAndFlags: Array<{ name: string; field: ContextField }>;
+  windowIds: Array<{ name: string; field: ContextField }>;
+  replacementHistory: ContextList<ContextReplacementEntry>;
+  replacementHistoryMetadata: ContextList<ContextMetadataEntry>;
+  retainedContext: {
+    ref: ContextField;
+    incomplete: ContextField;
+    lists: Array<{
+      name: string;
+      values: ContextList<ContextRetainedEntry>;
+      incomplete: ContextField;
+    }>;
+    omittedLists: number;
+  };
+  preserved: Array<{
+    name: string;
+    field: ContextField;
+    anchorUuid?: ContextField;
+    uuids?: ContextList<ContextField>;
+    allUuids?: ContextList<ContextField>;
+    values?: ContextList<ContextField>;
+  }>;
+  summaryFlags: Array<{ name: string; field: ContextField }>;
+  metadataOmitted: boolean;
+}
+export interface ContextWindowEntry {
+  kind: 'window';
+  id: string;
+  anchorKind: 'recording-start' | 'compaction';
+  owner: ContextWindowOwner;
+  startRef: SourceRef;
+  anchorTarget?: { id: string; position: number };
+  startBasis: 'first-retained-complete-physical-record' | 'recorded-compaction-boundary';
+  endRef?: SourceRef;
+  endBasis: 'next-same-scope-boundary' | 'last-retained-complete-source-record' | 'indexing';
+  endExclusive: boolean;
+  boundary?: {
+    kind: CompactionKind;
+    label: string;
+    ref: SourceRef;
+    target?: { id: string; position: number };
+    evidence: ContextEvidenceFields;
+    summaryAssociation: {
+      state: 'linked' | 'ambiguous' | 'unverified' | 'none';
+      refs: SourceRef[];
+      omitted: number;
+      target?: { id: string; position: number };
+    };
+  };
+  incomplete: boolean;
+}
+export interface ContextRepresentationEntry {
+  kind: 'representation';
+  id: string;
+  representationKind: 'claude-summary' | 'codex-compaction';
+  label: string;
+  owner: ContextWindowOwner;
+  ref: SourceRef;
+  target?: { id: string; position: number };
+  summaryFlags: Array<{ name: string; field: ContextField }>;
+  uuid?: ContextField;
+  parentUuid?: ContextField;
+  summaryAssociation: 'linked' | 'ambiguous' | 'unverified' | 'unlinked' | 'not-applicable';
+  linkedBoundaryRef?: SourceRef;
+  metadataOmitted: boolean;
+}
+export type ContextEvidenceEntry = ContextWindowEntry | ContextRepresentationEntry;
+export interface ContextWindowCoverage {
+  sourceFamily: Family;
+  scanComplete: boolean;
+  indexComplete: boolean;
+  indexedRecords: number;
+  retainedWindows: number;
+  omittedWindows: number;
+  retainedRepresentations: number;
+  omittedRepresentations: number;
+  omittedMetadataRecords: number;
+  retainedMetadataBytes: number;
+  metadataByteLimit: number;
+  windowLimit: number;
+  representationLimit: number;
+  pageLimit: number;
+  complete: boolean;
+}
+export interface ContextWindowPage {
+  entries: ContextEvidenceEntry[];
+  after?: number;
+  total: number;
+  coverage: ContextWindowCoverage;
+}
 export interface SearchMatch {
   ref: SourceRef;
   matchOffset: number;
@@ -458,7 +602,8 @@ export interface DatabaseRef {
   id: string;
   databasePath: string;
   generation: string;
-  table: 'projection_threads' | 'projection_projects' | 'provider_session_runtime';
+  table: 'orchestration_v2_projection_threads' | 'projection_projects' |
+    'orchestration_v2_projection_provider_threads' | 'orchestration_v2_projection_provider_session_bindings';
   key: string;
   columns: string[];
   sha256: string;

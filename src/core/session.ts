@@ -7,12 +7,13 @@ import { identifier, object } from './json.js';
 import { Normalizer } from './normalize.js';
 import { Timeline } from './timeline.js';
 import { summarizeUsage } from './usage.js';
+import { ContextWindows as ContextWindowIndex } from './context-windows.js';
 import { createUsageChartPage, MAX_COMPACTION_CAPTURES, MAX_COMPACTIONS_PER_PAGE, MAX_USAGE_CHART_POINTS, MAX_USAGE_REFERENCES_PER_VARIANT, MAX_USAGE_VARIANTS_PER_CALL, readCompactionCapture } from './usage-chart.js';
 import { SourceSearch } from './search.js';
 import { SessionRelationships } from './relationships.js';
 import { MAX_ITEMS, MAX_RECORDS, PARSE_BYTES, PREVIEW_UNITS, scan } from './scanner.js';
 import { abortIfNeeded, DataError, Sources } from './source.js';
-import type { CompactionMarker, CoverageLedger, LedgerPage, Overview, RecordMeta, RecordView, ResponseView, SearchView, SourceFile, SourceRef, TimelineFilter, TimelineMap, TimelinePage, UsageChartPage, UsagePage } from './types.js';
+import type { CompactionMarker, ContextWindowPage, CoverageLedger, LedgerPage, Overview, RecordMeta, RecordView, ResponseView, SearchView, SourceFile, SourceRef, TimelineFilter, TimelineMap, TimelinePage, UsageChartPage, UsagePage } from './types.js';
 
 const ledger = (bytes: number): CoverageLedger => ({
   inspectedBytes: bytes, scannedBytes: 0, completeLines: 0, pendingBytes: 0,
@@ -29,6 +30,7 @@ export class Session {
   readonly controller = new AbortController();
   private readonly records = new Map<string, RecordMeta>();
   private readonly compactions: CompactionMarker[] = [];
+  private readonly contextWindows: ContextWindowIndex;
   private omittedCompactionCaptures = 0;
   private readonly normalizer: Normalizer;
   private readonly timeline: Timeline;
@@ -39,11 +41,12 @@ export class Session {
   done?: Promise<void>;
   linkedIdentity?: SourceRef;
   private search?: SourceSearch;
-  constructor(readonly source: SourceFile, readonly sources: Sources) {
+  constructor(readonly source: SourceFile, readonly sources: Sources, selectedIdentity?: SourceRef) {
     this.normalizer = new Normalizer(source);
     this.timeline = new Timeline(source);
     this.coverage = ledger(source.size);
     this.relationships = new SessionRelationships(source);
+    this.contextWindows = new ContextWindowIndex(source, source.actorId, selectedIdentity);
   }
   async index(): Promise<void> {
     try {
@@ -85,6 +88,7 @@ export class Session {
         if (this.records.has(ref.id)) {
           this.timeline.capture(decoded, meta);
           if (decoded && meta.disposition !== 'malformed') this.relationships.capture(decoded, ref);
+          if (!pending) this.contextWindows.capture(decoded, this.source.family, ref, this.timeline.recordTarget(ref.id));
         }
         if (decoded) {
           const capture = readCompactionCapture(decoded, this.source.family, ref,
@@ -214,6 +218,13 @@ export class Session {
       indexedSourceIds: new Set(this.records.keys()), coverage,
       responseNavigation: (ref, refs) => this.timeline.responseNavigation(ref, refs) });
   }
+  contextWindowPage(after: number): ContextWindowPage {
+    const indexComplete = this.coverage.complete && this.records.size === this.coverage.completeLines
+      && !this.coverage.pendingBytes && !this.coverage.dispositions.limited && !this.coverage.dispositions.malformed
+      && !this.coverage.dispositions.unknown && this.source.family !== 'unknown';
+    return this.contextWindows.page(after, { sourceFamily: this.source.family, scanComplete: this.coverage.complete,
+      indexComplete, indexedRecords: this.records.size });
+  }
   events(after: number, kind: string, view: string | null): TimelinePage | TimelineMap {
     if (!Number.isSafeInteger(after) || after < 0 || after > this.timeline.events.length) throw new DataError('invalid-cursor', 'Invalid timeline cursor.');
     if (!['all', 'tools', 'user', 'instruction', 'assistant', 'message', 'tool-call', 'tool-result', 'reasoning', 'usage', 'snapshot', 'attachment', 'lifecycle', 'metadata', 'unknown'].includes(kind)) throw new DataError('invalid-request', 'Invalid event kind.');
@@ -239,7 +250,8 @@ export class Session {
       throw new DataError('invalid-range', 'Invalid record range.');
     }
     if (pointer && !this.timeline.allows(refId, pointer) && !(this.linkedIdentity?.id === refId && this.linkedIdentity.pointer === pointer) && !this.normalizer.items.some(item => item.ref.id === refId && item.ref.pointer === pointer)
-      && ![...this.normalizer.calls.values()].some(call => call.variants.some(variant => variant.refs.some(ref => ref.id === refId && ref.pointer === pointer)))) {
+      && ![...this.normalizer.calls.values()].some(call => call.variants.some(variant => variant.refs.some(ref => ref.id === refId && ref.pointer === pointer)))
+      && !this.contextWindows.allowsPointer(refId, pointer)) {
       throw new DataError('invalid-pointer', 'Select a recorded evidence field.');
     }
     const path = (await this.sources.resolve(this.source.resolvedPath)).path;
@@ -343,7 +355,7 @@ export class Sessions {
     const source: SourceFile = { id: randomUUID(), generation: randomUUID(), originalPath: path,
       resolvedPath: resolved.path, family: resolved.family, size: info.size, modifiedAt: info.mtime.toISOString(),
       actorId: identityInfo?.actorId, rootSessionId: identityInfo?.rootId };
-    const session = new Session(source, this.sources);
+    const session = new Session(source, this.sources, identity);
     if (identity) session.linkedIdentity = { ...identity, sourceId: source.id, generation: source.generation };
     this.entries.set(session.id, session);
     session.done = session.index();

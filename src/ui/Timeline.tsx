@@ -6,6 +6,7 @@ import { CategoryRanking, payloadSize } from './CategoryRanking';
 import { SourceSearch } from './SourceSearch';
 import { RecordedResponse } from './RecordedResponse';
 import { UsageChart } from './UsageChart';
+import { ContextWindows } from './ContextWindows';
 
 const categories: Array<[TimelineCategory, string]> = [
   ['user', 'User input'], ['instruction', 'Instructions'], ['assistant', 'Assistant'], ['message', 'Other message'],
@@ -169,6 +170,8 @@ export function Timeline({ overview, onInspect, onSourceNavigate, onRelation, us
         setActiveUsage(undefined);
         if (marker.target) jumpTo(marker.target.id, marker.target.position);
       }} />
+    <ContextWindows key={overview.id} overview={overview} onInspect={onInspect}
+      onNavigate={target => { onSourceNavigate(); setActiveUsage(undefined); jumpTo(target.id, target.position); }} />
     <SourceSearch overview={overview} onInspect={onInspect} onNavigate={match => { if (match.target) { onSourceNavigate(); setActiveUsage(undefined); jumpTo(match.target.id, match.target.position); } }} />
     <CategoryRanking ranking={map?.ranking} labels={categories} omitted={map?.omitted ?? 0} onInspect={onInspect} />
     <div className="timeline-toolbar">

@@ -31,7 +31,6 @@ function compactionMetadata(record: Record<string, unknown>, payload: Record<str
   if (windowNumber !== undefined) metadata.recordedWindowNumber = windowNumber;
   if (Array.isArray(replacementHistory)) metadata.replacementHistoryCount = replacementHistory.length;
   if (Array.isArray(preservedIds)) metadata.preservedMessageCount = preservedIds.length;
-  else if (preservedIds && typeof preservedIds === 'object') metadata.preservedMessageCount = Object.keys(preservedIds).length;
   if (Array.isArray(discoveredTools)) metadata.discoveredToolCount = discoveredTools.length;
   if (trigger) metadata.trigger = trigger;
 
