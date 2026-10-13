@@ -61,6 +61,8 @@
 .usage-chart-pager button { font-size: 10px; }
 .usage-chart-coverage { padding-top: 10px; border-top: 1px solid #edf0e8; color: #7b847b; font-size: 10px; line-height: 1.5; overflow-wrap: anywhere; }
 .usage-chart-coverage p { margin: 5px 0; }
+.cumulative-usage-segment { fill: none; stroke: #39866a; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.usage-chart-legend i.cumulative-usage-legend-line { width: 14px; height: 2px; border-radius: 0; background: #39866a; }
 .timeline-relationships { display: grid; align-items: stretch; gap: 7px; width: 100%; }
 .timeline-relationship { display: grid; gap: 5px; min-width: 0; padding: 8px; border: 1px solid #edf0e8; border-radius: 5px; color: #6b756a; font-size: 10px; }
 .timeline-relationship-heading { display: flex; align-items: baseline; gap: 6px 12px; flex-wrap: wrap; color: #4a564d; }

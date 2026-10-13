@@ -1,5 +1,6 @@
 import { object } from './json.js';
-import type { CompactionKind, CompactionMarker, CompactionMetadata, Family, ModelCall, ResponseNavigation, SourceRef, UsageChartCoverage, UsageChartPage, UsageChartPoint } from './types.js';
+import { accumulateUsageCall, createUsageAccumulator } from './usage.js';
+import type { CompactionKind, CompactionMarker, CompactionMetadata, CumulativeUsage, Family, ModelCall, ResponseNavigation, SourceRef, UsageChartCoverage, UsageChartPage, UsageChartPoint, UsageSummary } from './types.js';
 
 export const MAX_USAGE_CHART_POINTS = 200;
 export const MAX_USAGE_REFERENCES_PER_VARIANT = 500;
@@ -73,7 +74,30 @@ export function readCompactionCapture(
   return { id: ref.id + ':compaction', kind, label, boundary, ref: { ...ref }, metadata: compactionMetadata(record, payload), target };
 }
 
-function pointFor(call: ModelCall, ordinal: number, sourceIds: ReadonlySet<string>, navigate: (ref: SourceRef, refs: readonly SourceRef[]) => ResponseNavigation | undefined): UsageChartPoint | undefined {
+function firstRef(call: ModelCall): SourceRef | undefined {
+  let first: SourceRef | undefined;
+  for (const variant of call.variants) for (const ref of variant.refs) {
+    if (!first || ref.line < first.line || ref.line === first.line && ref.offset < first.offset) first = ref;
+  }
+  return first;
+}
+
+function cumulativeSnapshot(
+  summary: UsageSummary,
+  lastEligible: Partial<Record<keyof UsageSummary['fields'], { ref: SourceRef; sourceAvailable: boolean }>>,
+  measuredFields: ReadonlySet<keyof UsageSummary['fields']>,
+): CumulativeUsage {
+  const fields = {} as CumulativeUsage['fields'];
+  for (const key of Object.keys(summary.fields) as Array<keyof UsageSummary['fields']>) {
+    const last = lastEligible[key];
+    fields[key] = { ...summary.fields[key], measured: measuredFields.has(key),
+      ...(last ? { lastEligible: { ref: { ...last.ref }, sourceAvailable: last.sourceAvailable } } : {}) };
+  }
+  return { includedCalls: summary.includedCalls, excludedCalls: summary.excludedCalls, fields };
+}
+
+function pointFor(call: ModelCall, ordinal: number, sourceIds: ReadonlySet<string>, cumulative: CumulativeUsage,
+  navigate: (ref: SourceRef, refs: readonly SourceRef[]) => ResponseNavigation | undefined): UsageChartPoint | undefined {
   const observations = call.variants.flatMap(variant => variant.refs.map(ref => ({ variant, ref })))
     .sort((left, right) => left.ref.line - right.ref.line || left.ref.offset - right.ref.offset);
   const first = observations[0];
@@ -106,6 +130,7 @@ function pointFor(call: ModelCall, ordinal: number, sourceIds: ReadonlySet<strin
       responseNavigation,
     },
     sourceAvailable: sourceIds.has(first.ref.id),
+    cumulative,
   };
 }
 
@@ -125,8 +150,22 @@ export function createUsageChartPage(args: {
   const lastLine = Math.min(sourceEndLine, Math.max(firstLine - 1, nextPageLine - 1));
   const inRange = compactions.filter(marker => marker.ref.line >= firstLine && marker.ref.line <= lastLine);
   const visibleCompactions = inRange.slice(0, MAX_COMPACTIONS_PER_PAGE);
-  const points = calls.slice(after, end).map((call, index) => pointFor(call, after + index + 1, indexedSourceIds, responseNavigation))
-    .filter((point): point is UsageChartPoint => point !== undefined);
+  const accumulator = createUsageAccumulator();
+  const lastEligible: Partial<Record<keyof UsageSummary['fields'], { ref: SourceRef; sourceAvailable: boolean }>> = {};
+  const points: UsageChartPoint[] = [];
+  for (let index = 0; index < end; index++) {
+    const call = calls[index]!;
+    const contributions = accumulateUsageCall(accumulator, call);
+    const measuredFields = new Set(Object.keys(contributions) as Array<keyof UsageSummary['fields']>);
+    if (measuredFields.size) {
+      const ref = firstRef(call);
+      if (ref) for (const key of measuredFields) lastEligible[key] = { ref, sourceAvailable: indexedSourceIds.has(ref.id) };
+    }
+    if (index < after) continue;
+    const cumulative = cumulativeSnapshot(accumulator, lastEligible, measuredFields);
+    const point = pointFor(call, index + 1, indexedSourceIds, cumulative, responseNavigation);
+    if (point) points.push(point);
+  }
 
   return {
     points,

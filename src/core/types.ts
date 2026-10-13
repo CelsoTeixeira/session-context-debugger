@@ -140,6 +140,18 @@ export interface UsageChartObservation {
   matchingRefs: number;
   responseNavigation?: ResponseNavigation;
 }
+export interface CumulativeUsageField {
+  tokens: number | null;
+  calls: number;
+  overflow: boolean;
+  measured: boolean;
+  lastEligible?: { ref: SourceRef; sourceAvailable: boolean };
+}
+export interface CumulativeUsage {
+  includedCalls: number;
+  excludedCalls: number;
+  fields: Record<keyof UsageValues, CumulativeUsageField>;
+}
 export interface UsageChartPoint {
   id: string;
   ordinal: number;
@@ -155,6 +167,7 @@ export interface UsageChartPoint {
   variantCount: number;
   observation: UsageChartObservation;
   sourceAvailable: boolean;
+  cumulative: CumulativeUsage;
 }
 export type CompactionKind = 'claude-compact-boundary' | 'codex-compacted' | 'codex-context-compacted' | 'codex-compaction-representation';
 export interface CompactionMetadata {

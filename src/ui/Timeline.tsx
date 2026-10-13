@@ -6,6 +6,7 @@ import { CategoryRanking, payloadSize } from './CategoryRanking';
 import { SourceSearch } from './SourceSearch';
 import { RecordedResponse } from './RecordedResponse';
 import { UsageChart } from './UsageChart';
+import { CumulativeUsageChart } from './CumulativeUsageChart';
 import { ContextWindows } from './ContextWindows';
 
 const categories: Array<[TimelineCategory, string]> = [
@@ -164,6 +165,13 @@ export function Timeline({ overview, onInspect, onSourceNavigate, onRelation, us
       <div className="timeline-scale"><span>Recording start</span><span>{map ? map.matching.toLocaleString() + ' events match the filter' : ''}</span><span>Latest indexed event</span></div>
     </div>
     <UsageChart key={overview.id} overview={overview} onInspect={onInspect}
+      onShowPoint={jump => { onSourceNavigate(); setActiveUsage(jump); jumpTo(jump.navigation.target.id, jump.navigation.target.position); }}
+      onShowCompaction={marker => {
+        onSourceNavigate();
+        setActiveUsage(undefined);
+        if (marker.target) jumpTo(marker.target.id, marker.target.position);
+      }} />
+    <CumulativeUsageChart key={'cumulative-usage:' + overview.id} overview={overview} onInspect={onInspect}
       onShowPoint={jump => { onSourceNavigate(); setActiveUsage(jump); jumpTo(jump.navigation.target.id, jump.navigation.target.position); }}
       onShowCompaction={marker => {
         onSourceNavigate();
