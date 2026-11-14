@@ -117,7 +117,7 @@ export function App() {
     finally { if (serial === selectionSerial.current) setOpening(false); }
   }
   async function openLinked(value: T3Resolution, match: LogMatch, controller: AbortController, serial: number) {
-    const result = await api<{ id: string; identity: SourceRef }>('/api/t3/threads/' + value.thread.id + '/open', {
+    const result = await api<{ id: string; identity: SourceRef }>('/api/t3/threads/' + encodeURIComponent(value.thread.id) + '/open', {
       method: 'POST', body: JSON.stringify({ resolutionId: value.id, matchId: match.id }), signal: controller.signal,
     });
     if (serial !== selectionSerial.current || controller.signal.aborted) return;
@@ -168,7 +168,7 @@ export function App() {
     openController.current = controller;
     setOpening(true);
     try {
-      const value = await api<T3Resolution>('/api/t3/threads/' + id + '/resolve', { method: 'POST', body: '{}', signal: controller.signal });
+      const value = await api<T3Resolution>('/api/t3/threads/' + encodeURIComponent(id) + '/resolve', { method: 'POST', body: '{}', signal: controller.signal });
       if (serial !== selectionSerial.current || controller.signal.aborted) return;
       setResolution(value);
       setSidebarOpen(false);

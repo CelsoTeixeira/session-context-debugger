@@ -72,11 +72,16 @@ export async function createApp(roots?: string[]) {
         }
         const evidence = /^\/api\/t3\/evidence\/([0-9a-f-]{36})$/.exec(url.pathname);
         if (evidence && req.method === 'GET') return send(res, 200, { ok: true, data: await t3.evidence(evidence[1]!) });
-        const t3Thread = /^\/api\/t3\/threads\/([0-9a-f-]{36})\/(resolve|open)$/.exec(url.pathname);
+        const t3Thread = /^\/api\/t3\/threads\/([^/]*)\/(resolve|open)$/.exec(url.pathname);
         if (t3Thread && req.method === 'POST') {
-          if (t3Thread[2] === 'resolve') return send(res, 200, { ok: true, data: await links.resolve(t3Thread[1]!, controller.signal) });
+          let threadId: string;
+          try { threadId = decodeURIComponent(t3Thread[1]!); }
+          catch { throw new DataError('invalid-request', 'Invalid T3 thread ID.'); }
+          if (!threadId) throw new DataError('invalid-request', 'Invalid T3 thread ID.');
+          if (Buffer.byteLength(threadId, 'utf8') > 4096) throw new DataError('processing-limit', 'T3 thread ID exceeds the 4096-byte limit.', 413);
+          if (t3Thread[2] === 'resolve') return send(res, 200, { ok: true, data: await links.resolve(threadId, controller.signal) });
           const body = await readBody(req);
-          const match = await links.validate(t3Thread[1]!, string(body.resolutionId) ?? '', string(body.matchId) ?? '', controller.signal);
+          const match = await links.validate(threadId, string(body.resolutionId) ?? '', string(body.matchId) ?? '', controller.signal);
           const session = await sessions.open(match.path, controller.signal, match.identity);
           return send(res, 202, { ok: true, data: { id: session.id, identity: session.linkedIdentity } });
         }
