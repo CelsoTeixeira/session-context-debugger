@@ -12,6 +12,7 @@ export const MAX_CONTEXT_WINDOWS_PER_PAGE = 50;
 export const MAX_CONTEXT_METADATA_BYTES = 4 * 1024 * 1024;
 export const MAX_CONTEXT_LIST_PREVIEW = 20;
 export const MAX_CONTEXT_VALUE_BYTES = 512;
+const MAX_COMPARISON_RECORDS = 100_000;
 
 type TimelineTarget = { id: string; position: number };
 type JsonObject = Record<string, unknown>;
@@ -128,6 +129,9 @@ export class ContextWindows {
   private omittedWindows = 0;
   private omittedRepresentations = 0;
   private omittedMetadataRecords = 0;
+  private readonly comparisonRecords: Array<{ id: string; line: number; sessionId?: string; agentId?: string; isSidechain?: boolean; boundary: boolean; windowStartLine: number }> = [];
+  private comparisonRecordsComplete = true;
+  private comparisonWindowStartLine = 1;
 
   constructor(source: SourceFile, selectedActorId?: string, selectedIdentity?: SourceRef) {
     this.sourceInstanceId = source.id;
@@ -150,6 +154,16 @@ export class ContextWindows {
   capture(record: JsonObject | undefined, family: Family, ref: SourceRef, target?: TimelineTarget): void {
     this.lastRef = { ...ref };
     const owner = record ? this.owner(record, family, ref) : this.unknownOwner();
+    if (this.comparisonRecords.length < MAX_COMPARISON_RECORDS) {
+      const sid = family === 'claude' && typeof record?.sessionId === 'string' ? boundedString(record.sessionId) : undefined;
+      const aid = family === 'claude' && typeof record?.agentId === 'string' ? boundedString(record.agentId) : undefined;
+      const boundary = record ? compactionKind(record, family) !== undefined : false;
+      if (boundary) this.comparisonWindowStartLine = ref.line;
+      this.comparisonRecords.push({ id: ref.id, line: ref.line,
+        ...(sid && !sid.truncated ? { sessionId: sid.value } : {}), ...(aid && !aid.truncated ? { agentId: aid.value } : {}),
+        ...(typeof record?.isSidechain === 'boolean' ? { isSidechain: record.isSidechain } : {}), boundary,
+        windowStartLine: this.comparisonWindowStartLine });
+    } else this.comparisonRecordsComplete = false;
     if (!this.firstRef) {
       this.firstRef = { ...ref };
       const start = this.createWindow('recording-start', owner, ref, target);
@@ -168,6 +182,27 @@ export class ContextWindows {
     if (family === 'claude' && isSummaryRecord(record)) {
       this.captureRepresentation('claude-summary', 'Claude compact-summary representation', record, owner, ref, target);
     }
+  }
+
+  comparisonInterval(start: SourceRef, end: SourceRef, sessionId: string, agentId?: string): { ok: true; basis: string } | { ok: false; reason: string } {
+    if (!this.comparisonRecordsComplete || this.omittedWindows > 0) return { ok: false, reason: 'Recorded interval or boundary metadata was not fully retained.' };
+    if (end.line <= start.line) return { ok: false, reason: 'The source observations share a line or their physical order is ambiguous.' };
+    const rows = this.comparisonRecords.slice(start.line - 1, end.line);
+    if (rows.length !== end.line - start.line + 1 || rows[0]?.id !== start.id || rows.at(-1)?.id !== end.id) {
+      return { ok: false, reason: 'The intervening physical source interval is not fully retained.' };
+    }
+    if (rows.some(row => row.boundary)) return { ok: false, reason: 'A recorded compaction boundary intersects this source interval.' };
+    for (const row of rows) {
+      if (row.sessionId !== sessionId) return { ok: false, reason: 'Recorded session ownership is missing or changes within this source interval.' };
+      if (agentId !== undefined && row.agentId !== agentId) {
+        return { ok: false, reason: 'Recorded agent ownership changes within this source interval.' };
+      }
+      if (agentId === undefined && (row.agentId !== undefined || row.isSidechain === true)) {
+        return { ok: false, reason: 'A recorded child-actor ownership change intersects this root comparison.' };
+      }
+    }
+    return { ok: true, basis: 'Recorded physical interval within the supported source window beginning at line '
+      + rows[0]!.windowStartLine + '; request membership remains unknown.' };
   }
 
   page(after: number, coverage: Omit<ContextWindowCoverage, 'retainedWindows' | 'omittedWindows' | 'retainedRepresentations' | 'omittedRepresentations' | 'omittedMetadataRecords' | 'retainedMetadataBytes' | 'metadataByteLimit' | 'windowLimit' | 'representationLimit' | 'pageLimit' | 'complete'>): ContextWindowPage {

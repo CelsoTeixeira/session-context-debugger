@@ -1,6 +1,7 @@
 import { object } from './json.js';
 import { accumulateUsageCall, createUsageAccumulator } from './usage.js';
-import type { CompactionKind, CompactionMarker, CompactionMetadata, CumulativeUsage, Family, ModelCall, ResponseNavigation, SourceRef, UsageChartCoverage, UsageChartPage, UsageChartPoint, UsageSummary } from './types.js';
+import { compareInputCalls } from './input-deltas.js';
+import type { CompactionKind, CompactionMarker, CompactionMetadata, CumulativeUsage, Family, InputDelta, ModelCall, ResponseNavigation, SourceRef, UsageChartCoverage, UsageChartPage, UsageChartPoint, UsageSummary } from './types.js';
 
 export const MAX_USAGE_CHART_POINTS = 200;
 export const MAX_USAGE_REFERENCES_PER_VARIANT = 500;
@@ -97,7 +98,7 @@ function cumulativeSnapshot(
 }
 
 function pointFor(call: ModelCall, ordinal: number, sourceIds: ReadonlySet<string>, cumulative: CumulativeUsage,
-  navigate: (ref: SourceRef, refs: readonly SourceRef[]) => ResponseNavigation | undefined): UsageChartPoint | undefined {
+  navigate: (ref: SourceRef, refs: readonly SourceRef[]) => ResponseNavigation | undefined, inputDelta: InputDelta): UsageChartPoint | undefined {
   const observations = call.variants.flatMap(variant => variant.refs.map(ref => ({ variant, ref })))
     .sort((left, right) => left.ref.line - right.ref.line || left.ref.offset - right.ref.offset);
   const first = observations[0];
@@ -129,6 +130,7 @@ function pointFor(call: ModelCall, ordinal: number, sourceIds: ReadonlySet<strin
       matchingRefs: first.variant.refs.length,
       responseNavigation,
     },
+    inputDelta,
     sourceAvailable: sourceIds.has(first.ref.id),
     cumulative,
   };
@@ -142,8 +144,10 @@ export function createUsageChartPage(args: {
   indexedSourceIds: ReadonlySet<string>;
   coverage: UsageChartCoverage;
   responseNavigation: (ref: SourceRef, refs: readonly SourceRef[]) => ResponseNavigation | undefined;
+  comparisonInterval: (start: SourceRef, end: SourceRef, sessionId: string, agentId?: string) =>
+    { ok: true; basis: string } | { ok: false; reason: string };
 }): UsageChartPage {
-  const { calls, compactions, after, sourceEndLine, indexedSourceIds, coverage, responseNavigation } = args;
+  const { calls, compactions, after, sourceEndLine, indexedSourceIds, coverage, responseNavigation, comparisonInterval } = args;
   const end = Math.min(calls.length, after + MAX_USAGE_CHART_POINTS);
   const firstLine = after === 0 ? 1 : (calls[after]?.firstLine ?? sourceEndLine + 1);
   const nextPageLine = end < calls.length ? calls[end]!.firstLine : sourceEndLine + 1;
@@ -162,8 +166,14 @@ export function createUsageChartPage(args: {
       if (ref) for (const key of measuredFields) lastEligible[key] = { ref, sourceAvailable: indexedSourceIds.has(ref.id) };
     }
     if (index < after) continue;
+    const inputDelta: InputDelta = coverage.usageLimited
+      ? { status: 'gap', reason: 'Usage groups or aliases were not fully retained; adjacency cannot be established.' }
+      : calls[index - 1]?.firstLine === call.firstLine || calls[index + 1]?.firstLine === call.firstLine
+        ? { status: 'gap', reason: 'Distinct response groups share a physical source line; their order is unknown.' }
+        : compareInputCalls(calls[index - 1], call, comparisonInterval, responseNavigation,
+          ref => indexedSourceIds.has(ref.id));
     const cumulative = cumulativeSnapshot(accumulator, lastEligible, measuredFields);
-    const point = pointFor(call, index + 1, indexedSourceIds, cumulative, responseNavigation);
+    const point = pointFor(call, index + 1, indexedSourceIds, cumulative, responseNavigation, inputDelta);
     if (point) points.push(point);
   }
 

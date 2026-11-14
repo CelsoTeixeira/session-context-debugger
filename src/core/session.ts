@@ -217,7 +217,8 @@ export class Session {
     };
     return createUsageChartPage({ calls, compactions: this.compactions, after, sourceEndLine,
       indexedSourceIds: new Set(this.records.keys()), coverage,
-      responseNavigation: (ref, refs) => this.timeline.responseNavigation(ref, refs) });
+      responseNavigation: (ref, refs) => this.timeline.responseNavigation(ref, refs),
+      comparisonInterval: (start, end, sessionId, agentId) => this.contextWindows.comparisonInterval(start, end, sessionId, agentId) });
   }
   contextWindowPage(after: number): ContextWindowPage {
     const indexComplete = this.coverage.complete && this.records.size === this.coverage.completeLines

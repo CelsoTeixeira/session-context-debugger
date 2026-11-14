@@ -40,6 +40,16 @@ export interface UsageVariant {
   values: UsageValues;
   original: Record<string, unknown>;
   refs: SourceRef[];
+  comparisonEvidence?: InputComparisonEvidence[];
+}
+export interface InputComparisonEvidence {
+  provider: Family;
+  method?: string;
+  model?: string;
+  sessionId?: string;
+  agentId?: string;
+  isSidechain?: boolean;
+  ref: SourceRef;
 }
 export interface ModelCall {
   id: string;
@@ -166,9 +176,25 @@ export interface UsageChartPoint {
   retainedRefs: number;
   variantCount: number;
   observation: UsageChartObservation;
+  inputDelta: InputDelta;
   sourceAvailable: boolean;
   cumulative: CumulativeUsage;
 }
+export interface InputDeltaEndpoint {
+  ref: SourceRef;
+  retainedRefs: number;
+  input: number | null;
+  values: UsageValues;
+  model?: string;
+  actorId: string;
+  method?: string;
+  windowBasis: string;
+  navigation?: ResponseNavigation;
+  sourceAvailable: boolean;
+}
+export type InputDelta =
+  | { status: 'result'; delta: number; previous: InputDeltaEndpoint; current: InputDeltaEndpoint; windowBasis: string }
+  | { status: 'gap'; reason: string; previous?: InputDeltaEndpoint; current?: InputDeltaEndpoint };
 export type CompactionKind = 'claude-compact-boundary' | 'codex-compacted' | 'codex-context-compacted' | 'codex-compaction-representation';
 export interface CompactionMetadata {
   preTokens?: number;

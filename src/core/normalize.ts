@@ -1,7 +1,7 @@
 import { array, identifier as string, number, numericFields, object, stable } from './json.js';
 import { MAX_ITEMS, PREVIEW_UNITS } from './scanner.js';
 import { claudeResponse, codexResponse } from './responses.js';
-import type { EvidenceItem, ModelCall, RecordMeta, SourceFile, SourceRef, UsageValues } from './types.js';
+import type { EvidenceItem, InputComparisonEvidence, ModelCall, RecordMeta, SourceFile, SourceRef, UsageValues } from './types.js';
 import type { Obj } from './json.js';
 
 export class Normalizer {
@@ -27,7 +27,7 @@ export class Normalizer {
     });
   }
   call(ref: SourceRef, pointer: string, usage: Obj, identity: string | undefined,
-    values: UsageValues, model?: string): void {
+    values: UsageValues, model?: string, comparisonEvidence?: InputComparisonEvidence): void {
     if (this.calls.size >= 20_000) { this.usageLimited = true; this.warnings.add('Model-call index limit reached; usage coverage is incomplete.'); return; }
     const actor = this.source.actorId ?? this.source.id;
     const id = actor + ':' + (identity ?? 'unassigned:' + ref.line);
@@ -43,11 +43,15 @@ export class Normalizer {
     if (existing) {
       const variant = existing.variants.find(item => stable(item.original) === signature);
       if (variant) {
-        if (variant.refs.length < 500) variant.refs.push(evidenceRef);
+        if (variant.refs.length < 500) {
+          variant.refs.push(evidenceRef);
+          if (comparisonEvidence) variant.comparisonEvidence = [...(variant.comparisonEvidence ?? []), { ...comparisonEvidence, ref: evidenceRef }];
+        }
         else { this.usageLimited = true; this.warnings.add('Usage reference limit reached; all physical records remain in coverage.'); }
       } else {
         existing.status = 'ambiguous';
-        if (existing.variants.length < 100) existing.variants.push({ values, original, refs: [evidenceRef] });
+        if (existing.variants.length < 100) existing.variants.push({ values, original, refs: [evidenceRef],
+          ...(comparisonEvidence ? { comparisonEvidence: [{ ...comparisonEvidence, ref: evidenceRef }] } : {}) });
         else { this.usageLimited = true; this.warnings.add('Usage variant limit reached; ambiguous observations excluded.'); }
       }
     } else {
@@ -56,7 +60,8 @@ export class Normalizer {
         identityDetail: identity ? 'Recorded identity scoped to this source actor/thread.' : 'Missing recorded call identity; observation is unassigned.',
         model, scope: 'recorded-response; invocation-scope-unknown',
         status: identity ? 'resolved' : 'ambiguous', firstLine: ref.line,
-        variants: [{ values, original, refs: [evidenceRef] }],
+        variants: [{ values, original, refs: [evidenceRef],
+          ...(comparisonEvidence ? { comparisonEvidence: [{ ...comparisonEvidence, ref: evidenceRef }] } : {}) }],
       });
     }
   }
@@ -67,7 +72,7 @@ export class Normalizer {
       input: number(usage.input_tokens), cached: number(usage.cached_input_tokens),
       cacheCreation: number(usage.cache_write_input_tokens), output: number(usage.output_tokens),
       reasoning: number(usage.reasoning_output_tokens),
-    });
+    }, undefined, { provider: 'codex', method: 'token_usage_record / payload.usage.input_tokens', ref });
   }
   claudeUsage(ref: SourceRef, record: Obj): void {
     const message = object(record.message);
@@ -82,7 +87,11 @@ export class Normalizer {
         input: input !== null && creation !== null && cached !== null ? input + creation + cached : null,
         cached, cacheCreation: creation, output: number(usage.output_tokens),
         reasoning: number(object(usage.output_tokens_details).thinking_tokens),
-      }, string(message.model));
+      }, string(message.model), {
+        provider: 'claude', method: 'assistant /message/usage input_tokens + cache_creation_input_tokens + cache_read_input_tokens',
+        model: string(message.model), sessionId: string(record.sessionId), agentId: string(record.agentId),
+        isSidechain: typeof record.isSidechain === 'boolean' ? record.isSidechain : undefined, ref,
+      });
   }
   sectionItems(ref: SourceRef, pointer: string, value: string): void {
     const sections: Array<[RegExp, EvidenceItem['kind'], string]> = [
