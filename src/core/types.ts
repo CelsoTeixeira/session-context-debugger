@@ -370,6 +370,39 @@ export interface ContextWindowPage {
   total: number;
   coverage: ContextWindowCoverage;
 }
+export interface TranscriptBytesPoint {
+  id: string;
+  ordinal: number;
+  ref: SourceRef;
+  disposition: Disposition;
+  contentBytes: number;
+  delimiterBytes: number;
+  physicalBytes: number;
+  cumulativePhysicalBytes: number;
+  firstEventTarget?: { id: string; position: number };
+}
+export interface TranscriptBytesCoverage {
+  sourceSnapshotBytes: number;
+  scannedBytes: number;
+  scanState: Overview['state'];
+  retainedRecords: number;
+  retainedPhysicalBytes: number;
+  pendingBytes: number;
+  pendingRecords: number;
+  unretainedRecords: number;
+  physicalCoverageComplete: boolean;
+  unknownRecords: number;
+  malformedRecords: number;
+  limitedRecords: number;
+}
+export interface TranscriptBytesPage {
+  points: TranscriptBytesPoint[];
+  before?: number;
+  after?: number;
+  total: number;
+  pageLimit: number;
+  coverage: TranscriptBytesCoverage;
+}
 export interface SearchMatch {
   ref: SourceRef;
   matchOffset: number;

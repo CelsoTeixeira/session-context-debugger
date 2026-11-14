@@ -11,9 +11,10 @@ import { ContextWindows as ContextWindowIndex } from './context-windows.js';
 import { createUsageChartPage, MAX_COMPACTION_CAPTURES, MAX_COMPACTIONS_PER_PAGE, MAX_USAGE_CHART_POINTS, MAX_USAGE_REFERENCES_PER_VARIANT, MAX_USAGE_VARIANTS_PER_CALL, readCompactionCapture } from './usage-chart.js';
 import { SourceSearch } from './search.js';
 import { SessionRelationships } from './relationships.js';
+import { createTranscriptBytesPage } from './transcript-bytes.js';
 import { MAX_ITEMS, MAX_RECORDS, PARSE_BYTES, PREVIEW_UNITS, scan } from './scanner.js';
 import { abortIfNeeded, DataError, Sources } from './source.js';
-import type { CompactionMarker, ContextWindowPage, CoverageLedger, LedgerPage, Overview, RecordMeta, RecordView, ResponseView, SearchView, SourceFile, SourceRef, TimelineFilter, TimelineMap, TimelinePage, UsageChartPage, UsagePage } from './types.js';
+import type { CompactionMarker, ContextWindowPage, CoverageLedger, LedgerPage, Overview, RecordMeta, RecordView, ResponseView, SearchView, SourceFile, SourceRef, TimelineFilter, TimelineMap, TimelinePage, TranscriptBytesPage, UsageChartPage, UsagePage } from './types.js';
 
 const ledger = (bytes: number): CoverageLedger => ({
   inspectedBytes: bytes, scannedBytes: 0, completeLines: 0, pendingBytes: 0,
@@ -224,6 +225,13 @@ export class Session {
       && !this.coverage.dispositions.unknown && this.source.family !== 'unknown';
     return this.contextWindows.page(after, { sourceFamily: this.source.family, scanComplete: this.coverage.complete,
       indexComplete, indexedRecords: this.records.size });
+  }
+  transcriptBytes(after: number): TranscriptBytesPage {
+    if (!Number.isSafeInteger(after) || after < 0 || after > this.records.size) {
+      throw new DataError('invalid-cursor', 'Invalid transcript-bytes cursor.');
+    }
+    return createTranscriptBytesPage([...this.records.values()], after, this.source.size,
+      this.coverage.scannedBytes, this.state, this.coverage, refId => this.timeline.recordTarget(refId));
   }
   events(after: number, kind: string, view: string | null): TimelinePage | TimelineMap {
     if (!Number.isSafeInteger(after) || after < 0 || after > this.timeline.events.length) throw new DataError('invalid-cursor', 'Invalid timeline cursor.');

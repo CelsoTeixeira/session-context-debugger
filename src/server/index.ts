@@ -92,7 +92,7 @@ export async function createApp(roots?: string[]) {
           const body = await readBody(req);
           return send(res, 202, { ok: true, data: await relationships.returnTo(sessions, string(body.token) ?? '', controller.signal) });
         }
-        const match = /^\/api\/sessions\/([0-9a-f-]+)\/(overview|events|response|usage|usage-chart|context-windows|ledger|cancel|relationships\/(?:resolve|open|evidence)|search(?:\/cancel)?|records(?:\/r\d+)?)$/.exec(url.pathname);
+        const match = /^\/api\/sessions\/([0-9a-f-]+)\/(overview|events|response|usage|usage-chart|context-windows|transcript-bytes|ledger|cancel|relationships\/(?:resolve|open|evidence)|search(?:\/cancel)?|records(?:\/r\d+)?)$/.exec(url.pathname);
         if (!match || !uuid.test(match[1] ?? '')) throw new DataError('not-found', 'API route unavailable.', 404);
         const session = sessions.get(match[1]!);
         const route = match[2]!;
@@ -132,6 +132,10 @@ export async function createApp(roots?: string[]) {
         if (route === 'context-windows' && req.method === 'GET') {
           const after = Number(url.searchParams.get('after') ?? 0);
           return send(res, 200, { ok: true, data: session.contextWindowPage(after) });
+        }
+        if (route === 'transcript-bytes' && req.method === 'GET') {
+          const after = Number(url.searchParams.get('after') ?? 0);
+          return send(res, 200, { ok: true, data: session.transcriptBytes(after) });
         }
         if (route === 'events' && req.method === 'GET') {
           const after = Number(url.searchParams.get('after') ?? 0);
