@@ -14,8 +14,8 @@ export function Coverage({ overview, onInspect }: { overview: Overview; onInspec
     return () => controller.abort();
   }, [overview.id, overview.state, after]);
   const ledger = overview.coverage;
-  return <details className="coverage-panel">
-    <summary><span>Source coverage</span><span className="muted">{ledger.completeLines.toLocaleString()} complete lines · {ledger.complete ? 'snapshot scanned' : 'scan incomplete'}</span></summary>
+  return <section className="coverage-panel">
+    <div className="panel-heading"><h2>Source coverage</h2><span className="muted">{ledger.completeLines.toLocaleString()} complete lines · {ledger.complete ? 'snapshot scanned' : 'scan incomplete'}</span></div>
     <div className="coverage-body">
       <div className="coverage-counts">{Object.entries(ledger.dispositions).map(([kind, count]) => <div key={kind}><span>{kind}</span><strong>{count.toLocaleString()}</strong></div>)}</div>
       <p className="muted">{ledger.scannedBytes.toLocaleString()} / {ledger.inspectedBytes.toLocaleString()} bytes scanned. Pending tail: {ledger.pendingBytes.toLocaleString()} bytes. Physical lines and normalized items are different counts.</p>
@@ -27,5 +27,5 @@ export function Coverage({ overview, onInspect }: { overview: Overview; onInspec
       </tbody></table></div>
       <div className="pager">{after ? <button onClick={() => setAfter(0)}>First page</button> : null}{page?.after ? <button onClick={() => setAfter(page.after!)}>Next records →</button> : null}</div>
     </div>
-  </details>;
+  </section>;
 }

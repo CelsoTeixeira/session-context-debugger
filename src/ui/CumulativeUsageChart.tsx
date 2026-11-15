@@ -41,7 +41,6 @@ export function CumulativeUsageChart({ overview, onInspect, onShowPoint, onShowC
   onShowPoint: (jump: UsageJump) => void;
   onShowCompaction: (marker: CompactionMarker) => void;
 }) {
-  const [expanded, setExpanded] = useState(false);
   const [after, setAfter] = useState(0);
   const [metric, setMetric] = useState<keyof UsageValues>('input');
   const [page, setPage] = useState<UsageChartPage>();
@@ -50,7 +49,6 @@ export function CumulativeUsageChart({ overview, onInspect, onShowPoint, onShowC
   const [reload, setReload] = useState(0);
 
   useEffect(() => {
-    if (!expanded) return;
     const controller = new AbortController();
     let refreshTimer: ReturnType<typeof setTimeout> | undefined;
     setPage(undefined);
@@ -67,7 +65,7 @@ export function CumulativeUsageChart({ overview, onInspect, onShowPoint, onShowC
     };
     void load();
     return () => { controller.abort(); if (refreshTimer) clearTimeout(refreshTimer); };
-  }, [expanded, after, overview.id, overview.state, reload]);
+  }, [after, overview.id, overview.state, reload]);
 
   const point = page?.points.find(item => selected?.kind === 'point' && item.id === selected.id);
   const compaction = page?.compactions.find(item => selected?.kind === 'compaction' && item.id === selected.id);
@@ -97,11 +95,13 @@ export function CumulativeUsageChart({ overview, onInspect, onShowPoint, onShowC
       values: item.observation.values, ref: item.observation.ref, status: item.status, identityDetail: item.identityDetail });
   }
 
-  return <details className="usage-chart-panel" onToggle={event => setExpanded(event.currentTarget.open)}>
-    <summary>Cumulative recorded usage <span className="usage-chart-summary-note">Known subtotals · retained source order</span></summary>
+  return <section className="usage-chart-panel" aria-label="Cumulative recorded usage">
+    <div className="panel-heading"><div><h2>Cumulative recorded usage</h2><span className="usage-chart-summary-note">Known subtotals · retained source order</span></div></div>
     <div className="usage-chart-body">
-      <p className="muted">Choose one provider-reported field at a time. Subtotals carry across pages and recorded compaction markers; compaction evidence does not reset them. Missing, conflicting, unsupported, and overflow rows remain selectable gaps and break the plotted segment. A later measured row resumes with the partial known subtotal and coverage shown.</p>
-      <p className="muted">Cache read is a separate field and is not added again to input. Reasoning remains an output subcomponent in the evidence and is not a separate chart. These source-order prefixes do not describe wall-clock activity, billing, or active-context size. Runtime counters stay separate.</p>
+      <details className="measurement-methodology"><summary>About this measurement</summary>
+        <p>Choose one provider-reported field at a time. Subtotals carry across pages and recorded compaction markers; compaction evidence does not reset them. Missing, conflicting, unsupported, and overflow rows remain selectable gaps and break the plotted segment. A later measured row resumes with the partial known subtotal and coverage shown.</p>
+        <p>Cache read is a separate field and is not added again to input. Reasoning remains an output subcomponent in the evidence and is not a separate chart. These source-order prefixes do not describe wall-clock activity, billing, or active-context size. Runtime counters stay separate.</p>
+      </details>
       {overview.source.family === 'unknown' ? <p className="notice">Provider family is unknown; only supported recorded provider measurements can contribute.</p> : null}
       {error ? <p className="error" role="alert">{error} <button onClick={() => setReload(value => value + 1)}>Retry</button></p> : !page ? <p className="notice">Loading cumulative provider usage…</p> : <>
         {overview.state === 'indexing' ? <p className="notice" role="status">Indexing continues; this page refreshes while the recording is being indexed.</p> : null}
@@ -110,18 +110,6 @@ export function CumulativeUsageChart({ overview, onInspect, onShowPoint, onShowC
           <label>Choose cumulative field
             <select value={metric} disabled={!page.points.length} onChange={event => setMetric(event.target.value as keyof UsageValues)}>
               {metrics.map(item => <option key={item.key} value={item.key}>{item.label}</option>)}
-            </select>
-          </label>
-          <label>Choose response point
-            <select value={selected?.kind === 'point' ? selected.id : ''} disabled={!page.points.length} onChange={event => setSelected(event.target.value ? { kind: 'point', id: event.target.value } : undefined)}>
-              <option value="">Select a response in this page</option>
-              {page.points.map(item => <option key={item.id} value={item.id}>{pointDescription(item)}</option>)}
-            </select>
-          </label>
-          <label>Choose compaction evidence
-            <select value={selected?.kind === 'compaction' ? selected.id : ''} disabled={!page.compactions.length} onChange={event => setSelected(event.target.value ? { kind: 'compaction', id: event.target.value } : undefined)}>
-              <option value="">Select a marker in this page</option>
-              {page.compactions.map(item => <option key={item.id} value={item.id}>{item.label} · line {item.ref.line}</option>)}
             </select>
           </label>
         </div>
@@ -163,6 +151,20 @@ export function CumulativeUsageChart({ overview, onInspect, onShowPoint, onShowC
                 role="button" tabIndex={0} aria-label={description} aria-pressed={selectedPoint} onClick={() => setSelected({ kind: 'point', id: item.id })} onKeyDown={event => activateOnKeyboard(event, () => setSelected({ kind: 'point', id: item.id }))}><title>{description}</title></circle>;
             })}
           </svg>
+        </div>
+        <div className="usage-chart-selectors">
+          <label>Choose response point
+            <select value={selected?.kind === 'point' ? selected.id : ''} disabled={!page.points.length} onChange={event => setSelected(event.target.value ? { kind: 'point', id: event.target.value } : undefined)}>
+              <option value="">Select a response in this page</option>
+              {page.points.map(item => <option key={item.id} value={item.id}>{pointDescription(item)}</option>)}
+            </select>
+          </label>
+          <label>Choose compaction evidence
+            <select value={selected?.kind === 'compaction' ? selected.id : ''} disabled={!page.compactions.length} onChange={event => setSelected(event.target.value ? { kind: 'compaction', id: event.target.value } : undefined)}>
+              <option value="">Select a marker in this page</option>
+              {page.compactions.map(item => <option key={item.id} value={item.id}>{item.label} · line {item.ref.line}</option>)}
+            </select>
+          </label>
         </div>
         <div className="usage-chart-legend"><span><i className="usage-chart-legend-point" />Measured cumulative subtotal</span><span><i className="cumulative-usage-legend-line" />Connected source-order segment</span><span><i className="usage-chart-legend-gap" />Missing or unplottable gap</span><span><i className="usage-chart-legend-compaction" />Separate compaction evidence</span></div>
         {gaps.length ? <div className="usage-chart-gaps" aria-label="Selectable cumulative usage gaps">{gaps.map(item => <button key={item.id} className={selected?.kind === 'point' && selected.id === item.id ? 'selected' : ''} aria-pressed={selected?.kind === 'point' && selected.id === item.id} onClick={() => setSelected({ kind: 'point', id: item.id })}>Gap · response {item.ordinal} · line {item.firstLine}</button>)}</div> : null}
@@ -210,5 +212,5 @@ export function CumulativeUsageChart({ overview, onInspect, onShowPoint, onShowC
         </div>
       </>}
     </div>
-  </details>;
+  </section>;
 }

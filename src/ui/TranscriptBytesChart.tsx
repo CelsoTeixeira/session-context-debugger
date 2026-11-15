@@ -16,7 +16,6 @@ export function TranscriptBytesChart({ overview, onInspect, onNavigate }: {
   onInspect: (ref: SourceRef) => void;
   onNavigate: (target: { id: string; position: number }) => void;
 }) {
-  const [expanded, setExpanded] = useState(false);
   const [after, setAfter] = useState(0);
   const [metric, setMetric] = useState<Metric>('physical');
   const [selectedId, setSelectedId] = useState('');
@@ -25,7 +24,6 @@ export function TranscriptBytesChart({ overview, onInspect, onNavigate }: {
   const [reload, setReload] = useState(0);
 
   useEffect(() => {
-    if (!expanded) return;
     const controller = new AbortController();
     let refreshTimer: ReturnType<typeof setTimeout> | undefined;
     setPage(undefined);
@@ -43,7 +41,7 @@ export function TranscriptBytesChart({ overview, onInspect, onNavigate }: {
     };
     void load();
     return () => { controller.abort(); if (refreshTimer) clearTimeout(refreshTimer); };
-  }, [expanded, after, overview.id, overview.state, reload]);
+  }, [after, overview.id, overview.state, reload]);
 
   const points = page?.points ?? [];
   const selected = points.find(point => point.id === selectedId) ?? points[0];
@@ -58,10 +56,12 @@ export function TranscriptBytesChart({ overview, onInspect, onNavigate }: {
 
   function select(point: TranscriptBytesPoint): void { setSelectedId(point.id); }
 
-  return <details className="usage-chart-panel" onToggle={event => setExpanded(event.currentTarget.open)}>
-    <summary>Transcript bytes <span className="usage-chart-summary-note">Recorded file bytes · separate from tokens and active context</span></summary>
+  return <section className="usage-chart-panel" aria-label="Transcript bytes">
+    <div className="panel-heading"><div><h2>Transcript bytes</h2><span className="usage-chart-summary-note">Recorded file bytes · separate from captured payload bytes and active context</span></div></div>
     <div className="usage-chart-body">
-      <p className="muted">Each physical JSONL record appears once, including metadata, unknown, malformed, oversized, and pending records. Physical size includes content plus LF/CRLF delimiter bytes; cumulative size follows the original file offsets across pages. This describes recorded file bytes, not decoded text, category payload sizes, token usage, or active-context size.</p>
+      <details className="measurement-methodology"><summary>About this measurement</summary>
+        <p>Each physical JSONL record appears once, including metadata, unknown, malformed, oversized, and pending records. Physical size includes content plus LF/CRLF delimiter bytes; cumulative size follows the original file offsets across pages. This describes recorded file bytes, not decoded text, category payload sizes, token usage, or active-context size.</p>
+      </details>
       {error ? <p className="error" role="alert">{error} <button onClick={() => setReload(value => value + 1)}>Retry</button></p> : !page ? <p className="notice" role="status">Loading recorded transcript bytes…</p> : <>
         {page.coverage.scanState === 'indexing' ? <p className="notice" role="status">Indexing continues; this page refreshes while the recording is being indexed.</p> : null}
         {page.coverage.scanState === 'cancelled' ? <p className="notice">Indexing was cancelled. Retained points cover only the records indexed before cancellation.</p> : null}
@@ -71,13 +71,6 @@ export function TranscriptBytesChart({ overview, onInspect, onNavigate }: {
         <div className="usage-chart-selectors">
           <label>Choose byte measure<select value={metric} onChange={event => setMetric(event.target.value as Metric)}>
             <option value="physical">Per-record physical bytes</option><option value="cumulative">Cumulative physical bytes</option>
-          </select></label>
-          <label>Choose physical record<select value={selected?.id ?? ''} disabled={!points.length} onChange={event => {
-            const point = points.find(item => item.id === event.target.value); if (point) select(point);
-          }}>
-            <option value="">Select a record</option>{points.map(point => <option key={point.id} value={point.id}>
-              {'Record ' + point.ordinal + ' · line ' + point.ref.line + ' · ' + point.disposition + ' · ' + number(point.physicalBytes)}
-            </option>)}
           </select></label>
         </div>
         {points.length ? <div className="usage-chart-scroll" role="region" aria-label="Recorded file bytes by physical source record" tabIndex={0}>
@@ -104,6 +97,15 @@ export function TranscriptBytesChart({ overview, onInspect, onNavigate }: {
             })}
           </svg>
         </div> : <p className="notice">No physical records have been retained yet for this source snapshot.</p>}
+        <div className="usage-chart-selectors">
+          <label>Choose physical record<select value={selected?.id ?? ''} disabled={!points.length} onChange={event => {
+            const point = points.find(item => item.id === event.target.value); if (point) select(point);
+          }}>
+            <option value="">Select a record</option>{points.map(point => <option key={point.id} value={point.id}>
+              {'Record ' + point.ordinal + ' · line ' + point.ref.line + ' · ' + point.disposition + ' · ' + number(point.physicalBytes)}
+            </option>)}
+          </select></label>
+        </div>
         {selected ? <section className="usage-chart-evidence" aria-live="polite" aria-label="Selected transcript record byte evidence">
           <div><span className="section-label">Record {selected.ordinal} · line {selected.ref.line} · {selected.disposition}</span><h3>Recorded file bytes</h3></div>
           <div className="metrics"><div><span>Content bytes</span><strong>{number(selected.contentBytes)}</strong></div><div><span>Delimiter bytes</span><strong>{number(selected.delimiterBytes)}</strong></div>
@@ -127,5 +129,5 @@ export function TranscriptBytesChart({ overview, onInspect, onNavigate }: {
         </div>
       </>}
     </div>
-  </details>;
+  </section>;
 }

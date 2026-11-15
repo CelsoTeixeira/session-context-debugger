@@ -12,35 +12,41 @@ const shown = (value: number | null): string => value === null ? 'Unknown' : val
 
 export function SessionUsageSummary({ overview }: { overview: Overview }) {
   const usage = overview.usage;
-  return <section className="usage-panel session-usage-summary" aria-label="Recorded session usage totals">
-    <div className="panel-heading"><h2>Recorded usage subtotals</h2><span className="badge">{overview.state === 'indexing' ? 'Indexing…' : 'Provider-reported tokens'}</span></div>
-    <div className="metrics">{metrics.map(([key, label, note]) => {
-      const field = usage.fields[key];
-      const description = overview.source.family === 'claude' && key === 'input' ? 'Includes cache read and creation' : overview.source.family === 'claude' && key === 'cacheCreation' ? 'Subset of input' : note;
-      return <div key={key}><span>{label}</span><strong>{field.overflow ? 'Unavailable' : shown(field.tokens)}</strong><small>{field.calls.toLocaleString()} / {usage.includedCalls.toLocaleString()} included responses · {description}</small></div>;
-    })}</div>
-    <div className="usage-footnote"><p>{usage.includedCalls.toLocaleString()} resolved responses included; {usage.excludedCalls.toLocaleString()} conflicting or unassigned observations excluded. Matching repeated measurements count once. These are cumulative usage in this recording, not current context size, billing, or full T3 history. Missing fields stay unknown; see source coverage below.</p></div>
+  const metricSummaries = metrics.map(([key, label, note]) => {
+    const field = usage.fields[key];
+    const unknownCalls = Math.max(0, usage.includedCalls - field.calls);
+    const description = overview.source.family === 'claude' && key === 'input' ? 'Includes cache read and creation' : overview.source.family === 'claude' && key === 'cacheCreation' ? 'Subset of input' : note;
+    return {
+      key, label,
+      value: field.overflow ? 'Unavailable' : shown(field.tokens),
+      qualification: `${field.calls.toLocaleString()} measured / ${usage.includedCalls.toLocaleString()} included · ${unknownCalls.toLocaleString()} unknown${field.overflow ? ' · subtotal overflow' : ''} · ${description}`,
+    };
+  });
+  return <section className="session-usage-summary" aria-label="Cumulative recorded usage, not context size">
+    <div className="panel-heading"><div className="session-usage-title"><h2>Cumulative recorded usage · not context size</h2><span className="usage-summary-subtitle">Provider-reported tokens</span></div><span className="badge">{overview.state === 'indexing' ? 'Indexing…' : 'Provider-reported tokens'}</span></div>
+    <div className="metrics">{metricSummaries.map(item => <div key={item.key}><span>{item.label}</span><strong>{item.value}</strong><small>{item.qualification}</small></div>)}</div>
+    <details className="usage-summary-qualifications"><summary>Scope and coverage</summary><p>{usage.includedCalls.toLocaleString()} resolved responses included; {usage.excludedCalls.toLocaleString()} conflicting or unassigned observations excluded. Matching repeated measurements count once. These are cumulative usage in this recording, not billing or full T3 history. Missing fields stay unknown; source coverage is on the Coverage tab.</p>
+      <ul>{metricSummaries.map(item => <li key={item.key}><strong>{item.label}:</strong> {item.qualification}</li>)}</ul>
+    </details>
   </section>;
 }
 
 export function SessionUsage({ overview, onInspect, onNavigate }: { overview: Overview; onInspect: (ref: SourceRef) => void; onNavigate: (jump: UsageJump) => void }) {
-  const [expanded, setExpanded] = useState(false);
   const [after, setAfter] = useState(0);
   const [order, setOrder] = useState<'source' | 'input'>('input');
   const [page, setPage] = useState<UsagePage>();
   const [error, setError] = useState('');
   useEffect(() => {
-    if (!expanded) return;
     const controller = new AbortController();
     setPage(undefined); setError('');
     void api<UsagePage>('/api/sessions/' + overview.id + '/usage?after=' + after + '&order=' + order, { signal: controller.signal })
       .then(value => { if (!controller.signal.aborted) setPage(value); })
       .catch(error => { if (!controller.signal.aborted) setError((error as Error).message); });
     return () => controller.abort();
-  }, [expanded, after, order, overview.id, overview.state]);
-  return <details className="session-usage" onToggle={event => setExpanded(event.currentTarget.open)}>
-    <summary>Usage and input-token ranking</summary>
-    {expanded ? <div className="session-usage-body">
+  }, [after, order, overview.id, overview.state]);
+  return <section className="session-usage resource-panel" aria-label="Provider usage by response">
+    <div className="panel-heading"><h2>Response ranking</h2><span className="muted">Provider responses · retained recording</span></div>
+    <div className="session-usage-body">
     {!overview.callCount ? <p className="notice">No supported provider usage found. Runtime counters are not substituted.</p> : null}
     <div id="usage-breakdown">
       <label>Response order <select value={order} onChange={event => { setOrder(event.target.value as typeof order); setAfter(0); }}><option value="source">Source order</option><option value="input">Input tokens: highest first</option></select></label>
@@ -55,6 +61,6 @@ export function SessionUsage({ overview, onInspect, onNavigate }: { overview: Ov
         <div className="pager"><button disabled={!after} onClick={() => setAfter(Math.max(0, after - 20))}>Previous responses</button><button disabled={page.after === undefined} onClick={() => setAfter(page.after!)}>Next responses →</button></div>
       </>}
     </div>
-    </div> : null}
-  </details>;
+    </div>
+  </section>;
 }

@@ -182,14 +182,12 @@ export function ContextWindows({ overview, onInspect, onNavigate }: {
   onInspect: (ref: SourceRef) => void;
   onNavigate: (target: { id: string; position: number }) => void;
 }) {
-  const [expanded, setExpanded] = useState(false);
   const [after, setAfter] = useState(0);
   const [page, setPage] = useState<ContextWindowPage>();
   const [selectedId, setSelectedId] = useState<string>();
   const [error, setError] = useState('');
 
   useEffect(() => {
-    if (!expanded) return;
     const controller = new AbortController();
     let refreshTimer: ReturnType<typeof setTimeout> | undefined;
     setPage(undefined);
@@ -206,13 +204,15 @@ export function ContextWindows({ overview, onInspect, onNavigate }: {
     };
     void load();
     return () => { controller.abort(); if (refreshTimer) clearTimeout(refreshTimer); };
-  }, [expanded, after, overview.id, overview.state]);
+  }, [after, overview.id, overview.state]);
 
   const active = page?.entries.find(entry => entry.id === selectedId);
-  return <details className="usage-chart-panel" onToggle={event => setExpanded(event.currentTarget.open)}>
-    <summary>Recorded context windows <span className="usage-chart-summary-note">Source intervals · compaction evidence · not active-context membership</span></summary>
+  return <section className="usage-chart-panel" aria-label="Recorded context windows">
+    <div className="panel-heading"><div><h2>Recorded context windows</h2><span className="usage-chart-summary-note">Source intervals · compaction evidence · not active-context membership</span></div></div>
     <div className="usage-chart-body">
-      <p className="muted">A window is a source-derived physical interval: its start anchor through the next boundary in the same recorded actor/thread scope, or through the last retained complete physical source record. Recording start is the first retained complete physical record, not conversation start. Intervals are evidence of recorded order, not a reconstructed request or a list of active model-context members.</p>
+      <details className="measurement-methodology"><summary>About this measurement</summary>
+        <p>A window is a source-derived physical interval: its start anchor through the next boundary in the same recorded actor/thread scope, or through the last retained complete physical source record. Recording start is the first retained complete physical record, not conversation start. Intervals are evidence of recorded order, not a reconstructed request or a list of active model-context members.</p>
+      </details>
       {error ? <p className="error" role="alert">{error}</p> : !page ? <p className="notice">Loading recorded context-window evidence…</p> : <>
         <div className="usage-chart-scope"><span>{page.coverage.retainedWindows.toLocaleString()} windows · {page.coverage.retainedRepresentations.toLocaleString()} separate representation records</span>
           <span>{page.total ? 'Evidence rows ' + (after + 1).toLocaleString() + '–' + (after + page.entries.length).toLocaleString() + ' of ' + page.total.toLocaleString() : 'No retained context evidence'}</span></div>
@@ -233,5 +233,5 @@ export function ContextWindows({ overview, onInspect, onNavigate }: {
         </div>
       </>}
     </div>
-  </details>;
+  </section>;
 }

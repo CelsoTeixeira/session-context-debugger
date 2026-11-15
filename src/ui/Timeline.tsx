@@ -2,19 +2,10 @@ import { useEffect, useRef, useState } from 'react';
 import type { Overview, SourceRef, TimelineCategory, TimelineFilter, TimelineMap, TimelinePage, TimelineRelationship, TimelineRelationshipBasis, TimelineRelationshipKind, UsageJump } from '../core/types';
 import { timelineCategory, timelineCategoryMatches } from '../core/timeline-category';
 import { api } from './api';
-import { CategoryRanking, payloadSize } from './CategoryRanking';
-import { SourceSearch } from './SourceSearch';
+import { categories, payloadSize } from './CategoryRanking';
 import { RecordedResponse } from './RecordedResponse';
-import { UsageChart } from './UsageChart';
-import { CumulativeUsageChart } from './CumulativeUsageChart';
-import { ContextWindows } from './ContextWindows';
-import { TranscriptBytesChart } from './TranscriptBytesChart';
+import type { TimelineTargetRequest } from './timelineNavigation';
 
-const categories: Array<[TimelineCategory, string]> = [
-  ['user', 'User input'], ['instruction', 'Instructions'], ['assistant', 'Assistant'], ['message', 'Other message'],
-  ['tool-call', 'Tool call'], ['tool-result', 'Tool result'], ['reasoning', 'Reasoning'], ['usage', 'Usage'],
-  ['snapshot', 'Snapshot'], ['attachment', 'Attachment'], ['lifecycle', 'Lifecycle'], ['metadata', 'Metadata'], ['unknown', 'Unknown'],
-];
 const categoryLabel = (category: TimelineCategory): string => categories.find(([key]) => key === category)![1];
 const relationshipLabel: Record<TimelineRelationshipKind, string> = {
   'tool-counterpart': 'Tool call/result counterpart',
@@ -31,7 +22,7 @@ const relationshipBasisLabel: Record<TimelineRelationshipBasis, string> = {
   'unique-same-record-tool_result': 'unique tool_result on the same record',
 };
 
-export function Timeline({ overview, onInspect, onSourceNavigate, onRelation, usageJump }: { overview: Overview; onInspect: (ref: SourceRef, offset?: number) => void; onSourceNavigate: () => void; onRelation: (id: string) => void; usageJump?: UsageJump }) {
+export function Timeline({ overview, onInspect, onRelation, targetRequest }: { overview: Overview; onInspect: (ref: SourceRef, offset?: number) => void; onRelation: (id: string) => void; targetRequest?: TimelineTargetRequest }) {
   const [kind, setKind] = useState<TimelineFilter>('all');
   const [after, setAfter] = useState(0);
   const [page, setPage] = useState<TimelinePage>();
@@ -62,10 +53,10 @@ export function Timeline({ overview, onInspect, onSourceNavigate, onRelation, us
     setJumpRevision(value => value + 1);
   }
   useEffect(() => {
-    if (!usageJump || usageJump.sessionId !== overview.id) return;
-    setActiveUsage(usageJump);
-    jumpTo(usageJump.navigation.target.id, usageJump.navigation.target.position);
-  }, [usageJump, overview.id]);
+    if (!targetRequest || targetRequest.sessionId !== overview.id) return;
+    setActiveUsage(targetRequest.usage);
+    jumpTo(targetRequest.id, targetRequest.position);
+  }, [targetRequest, overview.id]);
   useEffect(() => {
     // The overview/ranking can change height when a filter clears. Wait for
     // that layout before scrolling to the selected marker.
@@ -165,26 +156,6 @@ export function Timeline({ overview, onInspect, onSourceNavigate, onRelation, us
       </div>
       <div className="timeline-scale"><span>Recording start</span><span>{map ? map.matching.toLocaleString() + ' events match the filter' : ''}</span><span>Latest indexed event</span></div>
     </div>
-    <UsageChart key={overview.id} overview={overview} onInspect={onInspect}
-      onShowPoint={jump => { onSourceNavigate(); setActiveUsage(jump); jumpTo(jump.navigation.target.id, jump.navigation.target.position); }}
-      onShowCompaction={marker => {
-        onSourceNavigate();
-        setActiveUsage(undefined);
-        if (marker.target) jumpTo(marker.target.id, marker.target.position);
-      }} />
-    <CumulativeUsageChart key={'cumulative-usage:' + overview.id} overview={overview} onInspect={onInspect}
-      onShowPoint={jump => { onSourceNavigate(); setActiveUsage(jump); jumpTo(jump.navigation.target.id, jump.navigation.target.position); }}
-      onShowCompaction={marker => {
-        onSourceNavigate();
-        setActiveUsage(undefined);
-        if (marker.target) jumpTo(marker.target.id, marker.target.position);
-      }} />
-    <ContextWindows key={overview.id} overview={overview} onInspect={onInspect}
-      onNavigate={target => { onSourceNavigate(); setActiveUsage(undefined); jumpTo(target.id, target.position); }} />
-    <TranscriptBytesChart key={'transcript-bytes:' + overview.id} overview={overview} onInspect={onInspect}
-      onNavigate={target => { onSourceNavigate(); setActiveUsage(undefined); jumpTo(target.id, target.position); }} />
-    <SourceSearch overview={overview} onInspect={onInspect} onNavigate={match => { if (match.target) { onSourceNavigate(); setActiveUsage(undefined); jumpTo(match.target.id, match.target.position); } }} />
-    <CategoryRanking ranking={map?.ranking} labels={categories} omitted={map?.omitted ?? 0} onInspect={onInspect} />
     <div className="timeline-toolbar">
       <div><label htmlFor="timeline-kind">Show activity</label>{' '}<select id="timeline-kind" value={kind} onChange={event => filterActivity(event.target.value as TimelineFilter)}>
         <option value="all">All activity</option><option value="tools">Tool calls and results</option>{categories.map(([category, label]) => <option key={category} value={category}>{label}</option>)}
@@ -232,7 +203,7 @@ export function Timeline({ overview, onInspect, onSourceNavigate, onRelation, us
         </div>
         <details className="timeline-identities"><summary>Recorded time and identifiers</summary><span className="path">Time: {selected.timestamp ?? 'unknown'}<br />Actor: {selected.actorId}<br />Recorded ID: {selected.recordedId ?? 'unknown'}<br />Tool ID: {selected.toolId ?? 'unknown'}</span></details>
       </article> : null}
-      <p className="muted timeline-coverage">{page.complete ? 'Event coverage complete within this snapshot.' : 'Event coverage incomplete; see source coverage below.'} Index limit: {page.maxEvents.toLocaleString()} events.{page.omitted ? ' Additional event/record captures omitted: ' + page.omitted.toLocaleString() + '.' : ''} Snapshots, runtime copies, and unknown records remain separate evidence. Missing reasoning does not mean none occurred.</p>
+      <p className="muted timeline-coverage">{page.complete ? 'Event coverage complete within this snapshot.' : 'Event coverage incomplete; see the Coverage tab for source coverage.'} Index limit: {page.maxEvents.toLocaleString()} events.{page.omitted ? ' Additional event/record captures omitted: ' + page.omitted.toLocaleString() + '.' : ''} Snapshots, runtime copies, and unknown records remain separate evidence. Missing reasoning does not mean none occurred.</p>
     </> : null}
   </section>;
 }

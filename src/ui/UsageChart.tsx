@@ -36,7 +36,6 @@ export function UsageChart({ overview, onInspect, onShowPoint, onShowCompaction 
   onShowPoint: (jump: UsageJump) => void;
   onShowCompaction: (marker: CompactionMarker) => void;
 }) {
-  const [expanded, setExpanded] = useState(false);
   const [after, setAfter] = useState(0);
   const [page, setPage] = useState<UsageChartPage>();
   const [selected, setSelected] = useState<{ kind: 'point' | 'compaction'; id: string }>();
@@ -46,7 +45,6 @@ export function UsageChart({ overview, onInspect, onShowPoint, onShowCompaction 
   useEffect(() => { setAfter(0); setSelected(undefined); setMetric('reported'); setPage(undefined); }, [overview.id]);
 
   useEffect(() => {
-    if (!expanded) return;
     const controller = new AbortController();
     let refreshTimer: ReturnType<typeof setTimeout> | undefined;
     setPage(undefined);
@@ -63,7 +61,7 @@ export function UsageChart({ overview, onInspect, onShowPoint, onShowCompaction 
     };
     void load();
     return () => { controller.abort(); if (refreshTimer) clearTimeout(refreshTimer); };
-  }, [expanded, after, overview.id, overview.state]);
+  }, [after, overview.id, overview.state]);
 
   const point = page?.points.find(item => selected?.kind === 'point' && item.id === selected.id);
   const compaction = page?.compactions.find(item => selected?.kind === 'compaction' && item.id === selected.id);
@@ -105,29 +103,19 @@ export function UsageChart({ overview, onInspect, onShowPoint, onShowCompaction 
       ref: endpoint.ref, status: 'resolved', identityDetail: 'Recorded response endpoint for an adjacent input comparison.' });
   }
 
-  return <details className="usage-chart-panel" onToggle={event => setExpanded(event.currentTarget.open)}>
-    <summary>Provider input by source line <span className="usage-chart-summary-note">{metric === 'reported' ? 'Reported input' : 'Signed input change'} · whole retained recording</span></summary>
+  return <section className="usage-chart-panel" aria-label="Provider input by source line">
+    <div className="panel-heading"><div><h2>Provider input by source line</h2><span className="usage-chart-summary-note">{metric === 'reported' ? 'Reported input' : 'Signed input change'} · whole retained recording</span></div></div>
     <div className="usage-chart-body">
-      <p className="muted">Each point is a retained provider response group. The x-axis is physical source line; the chart ignores the conversation category filter. These recorded response measurements do not establish invocation count or scope, request membership, active-context contents, or causes.</p>
-      <p className="muted">{overview.source.family === 'claude' ? 'Claude input total adds recorded input_tokens, cache_read_input_tokens, and cache_creation_input_tokens.' : overview.source.family === 'codex' ? 'Codex input uses recorded input_tokens; cached_input_tokens is already included.' : 'Provider input arithmetic is unavailable for this recording.'}</p>
+      <details className="measurement-methodology"><summary>About this measurement</summary>
+        <p>Each point is a retained provider response group. The x-axis is physical source line; the chart ignores the conversation category filter. These recorded response measurements do not establish invocation count or scope, request membership, active-context contents, or causes.</p>
+        <p>{overview.source.family === 'claude' ? 'Claude input total adds recorded input_tokens, cache_read_input_tokens, and cache_creation_input_tokens.' : overview.source.family === 'codex' ? 'Codex input uses recorded input_tokens; cached_input_tokens is already included.' : 'Provider input arithmetic is unavailable for this recording.'}</p>
+      </details>
       {error ? <p className="error" role="alert">{error}</p> : !page ? <p className="notice">Loading provider usage and compaction evidence…</p> : <>
         <div className="usage-chart-scope"><span>Whole retained recording · responses {page.points.length ? page.points[0]!.ordinal.toLocaleString() + '–' + page.points.at(-1)!.ordinal.toLocaleString() : 'none on this page'} of {page.total.toLocaleString()}</span><span>Source lines {page.sourceRange.firstLine.toLocaleString()}–{page.sourceRange.lastLine.toLocaleString()}</span></div>
         <div className="usage-chart-selectors">
           <label>Metric
             <select value={metric} onChange={event => setMetric(event.target.value as 'reported' | 'delta')}>
               <option value="reported">Reported input</option><option value="delta">Signed input change</option>
-            </select>
-          </label>
-          <label>Choose response point
-            <select value={selected?.kind === 'point' ? selected.id : ''} onChange={event => setSelected(event.target.value ? { kind: 'point', id: event.target.value } : undefined)}>
-              <option value="">Select a response in this page</option>
-              {page.points.map(item => <option key={item.id} value={item.id}>{inputLabel(item)}</option>)}
-            </select>
-          </label>
-          <label>Choose compaction evidence
-            <select value={selected?.kind === 'compaction' ? selected.id : ''} onChange={event => setSelected(event.target.value ? { kind: 'compaction', id: event.target.value } : undefined)}>
-              <option value="">Select a marker in this page</option>
-              {page.compactions.map(item => <option key={item.id} value={item.id}>{item.label} · line {item.ref.line}</option>)}
             </select>
           </label>
         </div>
@@ -166,6 +154,21 @@ export function UsageChart({ overview, onInspect, onShowPoint, onShowCompaction 
                 role="button" tabIndex={0} aria-label={pointDescription(item)} aria-pressed={selectedPoint} onClick={() => setSelected({ kind: 'point', id: item.id })} onKeyDown={event => activateOnKeyboard(event, () => setSelected({ kind: 'point', id: item.id }))}><title>{pointDescription(item)}</title></circle>;
             })}
           </svg>
+        </div>
+        <p className="gap-explanation" role="note">{metric === 'delta' ? 'Points on the Gaps rail have no supported comparison — not zero. Select one for the reason.' : 'Points on the Gaps rail have no usable input value (missing, unsupported or conflicting) — not zero. Select one for the reason.'}</p>
+        <div className="usage-chart-selectors">
+          <label>Choose response point
+            <select value={selected?.kind === 'point' ? selected.id : ''} onChange={event => setSelected(event.target.value ? { kind: 'point', id: event.target.value } : undefined)}>
+              <option value="">Select a response in this page</option>
+              {page.points.map(item => <option key={item.id} value={item.id}>{inputLabel(item)}</option>)}
+            </select>
+          </label>
+          <label>Choose compaction evidence
+            <select value={selected?.kind === 'compaction' ? selected.id : ''} onChange={event => setSelected(event.target.value ? { kind: 'compaction', id: event.target.value } : undefined)}>
+              <option value="">Select a marker in this page</option>
+              {page.compactions.map(item => <option key={item.id} value={item.id}>{item.label} · line {item.ref.line}</option>)}
+            </select>
+          </label>
         </div>
         <div className="usage-chart-legend"><span><i className="usage-chart-legend-point" />{metric === 'reported' ? 'Resolved reported input' : 'Resolved signed change'}</span><span><i className="usage-chart-legend-gap" />Gap on separate rail</span><span><i className="usage-chart-legend-compaction" />Recorded compaction evidence</span></div>
         {gaps.length ? <div className="usage-chart-gaps" aria-label="Selectable unresolved input gaps">{gaps.map(item => <button key={item.id} className={selected?.kind === 'point' && selected.id === item.id ? 'selected' : ''} aria-pressed={selected?.kind === 'point' && selected.id === item.id} onClick={() => setSelected({ kind: 'point', id: item.id })}>Gap · response {item.ordinal} · line {item.firstLine}</button>)}</div> : null}
@@ -213,5 +216,5 @@ export function UsageChart({ overview, onInspect, onShowPoint, onShowCompaction 
         </div>
       </>}
     </div>
-  </details>;
+  </section>;
 }
