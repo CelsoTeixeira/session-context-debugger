@@ -14,7 +14,7 @@ import { SessionRelationships } from './relationships.js';
 import { createTranscriptBytesPage } from './transcript-bytes.js';
 import { MAX_ITEMS, MAX_RECORDS, PARSE_BYTES, PREVIEW_UNITS, scan } from './scanner.js';
 import { abortIfNeeded, DataError, Sources } from './source.js';
-import type { CompactionMarker, ContextWindowPage, CoverageLedger, LedgerPage, Overview, RecordMeta, RecordView, ResponseView, SearchView, SourceFile, SourceRef, TimelineFilter, TimelineMap, TimelinePage, TranscriptBytesPage, UsageChartPage, UsagePage } from './types.js';
+import type { CompactionMarker, ContextWindowPage, CoverageLedger, LedgerPage, Overview, RecordMeta, RecordView, RepeatedCaptureCoverage, RepeatedCaptureGroupsPage, RepeatedCaptureOccurrencesPage, RepeatedCaptureRepresentationFilter, ResponseView, SearchView, SourceFile, SourceRef, TimelineCategory, TimelineFilter, TimelineMap, TimelinePage, TranscriptBytesPage, UsageChartPage, UsagePage } from './types.js';
 
 const ledger = (bytes: number): CoverageLedger => ({
   inspectedBytes: bytes, scannedBytes: 0, completeLines: 0, pendingBytes: 0,
@@ -116,7 +116,7 @@ export class Session {
     } catch (error) {
       this.state = this.controller.signal.aborted ? 'cancelled' : 'error';
       this.error = error instanceof Error ? error.message : 'Indexing failed.';
-    }
+    } finally { this.timeline.repeatedCaptures.finish(); }
   }
   overview(): Overview {
     const calls = [...this.normalizer.calls.values()];
@@ -159,6 +159,43 @@ export class Session {
       && !coverage.pendingBytes && !coverage.dispositions.limited && !coverage.dispositions.malformed && !coverage.dispositions.unknown
       && !this.normalizer.usageLimited;
     return this.timeline.responses.view(event, this.normalizer.calls, complete);
+  }
+  repeatedCaptureGroups(after: number, representation: string | null, category: string | null): RepeatedCaptureGroupsPage {
+    if (!Number.isSafeInteger(after) || after < 0) throw new DataError('invalid-cursor', 'Invalid repeated-capture group cursor.');
+    const selectedRepresentation = representation ?? 'primary';
+    if (!['all', 'primary', 'diagnostic-snapshot', 'metadata', 'unknown', 'mirror'].includes(selectedRepresentation)) {
+      throw new DataError('invalid-filter', 'Invalid repeated-capture representation filter.');
+    }
+    const selectedCategory = category ?? 'all';
+    if (!['all', 'message', 'tool-call', 'tool-result', 'reasoning', 'usage', 'attachment', 'lifecycle', 'metadata', 'unknown', 'user', 'assistant', 'instruction', 'snapshot'].includes(selectedCategory)) {
+      throw new DataError('invalid-filter', 'Invalid repeated-capture category filter.');
+    }
+    const page = this.timeline.repeatedCaptures.page(after, selectedRepresentation as RepeatedCaptureRepresentationFilter,
+      selectedCategory as 'all' | TimelineCategory);
+    if (after > page.total) throw new DataError('invalid-cursor', 'Invalid repeated-capture group cursor.');
+    return { ...page, coverage: this.repeatedCaptureCoverage() };
+  }
+  repeatedCaptureOccurrences(groupId: string, after: number): RepeatedCaptureOccurrencesPage {
+    if (!/^rc_[a-f0-9]{64}$/.test(groupId)) throw new DataError('invalid-group', 'Invalid repeated-capture group ID.');
+    if (!Number.isSafeInteger(after) || after < 0) throw new DataError('invalid-cursor', 'Invalid repeated-capture occurrence cursor.');
+    const page = this.timeline.repeatedCaptures.occurrences(groupId, after);
+    return { ...page, coverage: this.repeatedCaptureCoverage() };
+  }
+  private repeatedCaptureCoverage(): RepeatedCaptureCoverage {
+    const dispositions = this.coverage.dispositions;
+    const scannedRecords = Object.values(dispositions).reduce((sum, value) => sum + value, 0);
+    const indexComplete = this.coverage.complete && this.records.size === scannedRecords;
+    const summary = this.timeline.repeatedCaptures.summary();
+    const comparisonComplete = this.state === 'ready' && indexComplete && this.source.family !== 'unknown'
+      && !dispositions.pending && !dispositions.malformed && !dispositions.limited && !dispositions.unknown
+      && !this.timeline.omitted && !this.normalizer.limitedItems && !summary.unresolvedFields && !summary.omittedByMetadataLimit;
+    return {
+      state: this.state, scanComplete: this.coverage.complete, comparisonComplete,
+      sourceFamilyUnknown: this.source.family === 'unknown', scannedRecords, indexedRecords: this.records.size,
+      unretainedRecords: Math.max(0, scannedRecords - this.records.size), pendingRecords: dispositions.pending,
+      malformedRecords: dispositions.malformed, oversizedRecords: dispositions.limited, unknownRecords: dispositions.unknown,
+      normalizationLimited: this.normalizer.limitedItems, timelineCaptureOmissions: this.timeline.omitted, ...summary,
+    };
   }
   usage(after: number, order: string): UsagePage {
     if (order !== 'source' && order !== 'input') throw new DataError('invalid-request', 'Invalid usage order.');

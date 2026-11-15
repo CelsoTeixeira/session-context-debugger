@@ -72,10 +72,47 @@
 .timeline-relationship small { color: #7b847b; }
 .timeline-relationship-links { display: flex; flex-wrap: wrap; gap: 5px; }
 .timeline-relationship-links button { max-width: 100%; overflow-wrap: anywhere; text-align: left; font-size: 10px; }
+.repeated-captures { width: 100%; min-width: 0; overflow-wrap: anywhere; }
+.repeated-capture-method { margin: 4px 0 12px; color: #647164; font-size: 11px; line-height: 1.45; }
+.repeated-capture-controls { display: flex; flex-wrap: wrap; gap: 10px 16px; margin: 12px 0; }
+.repeated-capture-controls label { display: grid; gap: 4px; min-width: 190px; color: #5f695f; font-size: 10px; }
+.repeated-capture-controls select { max-width: min(360px, 100%); min-width: 190px; padding: 6px; border: 1px solid #d2d9cc; border-radius: 5px; background: #fff; color: inherit; }
+.repeated-capture-counts { display: flex; flex-wrap: wrap; gap: 6px 12px; margin: 10px 0; color: #697368; font-size: 10px; }
+.repeated-capture-counts span { padding: 4px 7px; border: 1px solid #edf0e8; border-radius: 12px; background: #fafbf9; }
+.repeated-capture-scope { margin: 8px 0 12px; font-size: 10px; }
+.repeated-capture-coverage { display: grid; gap: 4px; margin: 10px 0; padding: 9px 11px; font-size: 10px; line-height: 1.5; }
+.repeated-capture-table-wrap { max-width: 100%; overflow-x: auto; overscroll-behavior-inline: contain; border: 1px solid #e4e9df; border-radius: 6px; scrollbar-width: thin; }
+.repeated-capture-table { width: 100%; min-width: 690px; border-collapse: collapse; font-size: 10px; }
+.repeated-capture-table th, .repeated-capture-table td { padding: 8px 9px; border-bottom: 1px solid #edf0e8; text-align: left; vertical-align: top; overflow-wrap: anywhere; }
+.repeated-capture-table th { color: #697368; font-weight: 600; background: #fafbf9; }
+.repeated-capture-table tr:last-child td { border-bottom: 0; }
+.repeated-capture-table tr.selected td { background: #f2f7f1; }
+.repeated-capture-table small { display: block; margin-top: 3px; color: #788278; font-size: 9px; line-height: 1.4; }
+.repeated-capture-select { display: grid; gap: 3px; max-width: 100%; padding: 0; border: 0; background: transparent; color: #405b47; text-align: left; overflow-wrap: anywhere; }
+.repeated-capture-select:hover { text-decoration: underline; }
+.repeated-capture-select small { margin: 0; }
+.repeated-capture-pager { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 10px 0 14px; color: #697368; font-size: 10px; }
+.repeated-capture-pager > div { display: flex; gap: 6px; }
+.repeated-capture-pager button, .repeated-capture-occurrence button { font-size: 10px; }
+.repeated-capture-detail { min-width: 0; margin-top: 14px; padding-top: 10px; border-top: 1px solid #e6ebe2; }
+.repeated-capture-detail h3 { margin: 0; font-size: 14px; }
+.repeated-capture-evidence { margin: 8px 0; color: #586558; font-size: 10px; line-height: 1.5; }
+.repeated-capture-occurrences { display: grid; gap: 6px; min-width: 0; }
+.repeated-capture-occurrence { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; padding: 8px; border: 1px solid #edf0e8; border-radius: 5px; }
+.repeated-capture-occurrence > span { display: grid; gap: 3px; min-width: 0; color: #566356; font-size: 10px; }
+.repeated-capture-occurrence code { display: block; max-width: 100%; color: #536b5b; font-size: 9px; white-space: normal; overflow-wrap: anywhere; }
+.repeated-capture-occurrence > div { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 5px; flex: 0 0 auto; }
+.repeated-capture-about { margin-top: 12px; }
+.repeated-capture-about p { overflow-wrap: anywhere; }
 @media (max-width: 760px) {
   .usage-chart-panel > .panel-heading { padding: 12px 12px 0; }
   .usage-chart-body { padding: 0 12px 12px; }
   .usage-chart-selectors { display: grid; }
   .usage-chart-selectors select { width: 100%; min-width: 0; }
   .usage-chart-scope { align-items: flex-start; flex-direction: column; gap: 4px; }
+  .repeated-capture-controls { display: grid; }
+  .repeated-capture-controls label, .repeated-capture-controls select { width: 100%; min-width: 0; }
+  .repeated-capture-pager { align-items: flex-start; flex-direction: column; }
+  .repeated-capture-occurrence { align-items: flex-start; flex-direction: column; }
+  .repeated-capture-occurrence > div { justify-content: flex-start; }
 }

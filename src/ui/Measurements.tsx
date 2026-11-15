@@ -6,6 +6,7 @@ import { CumulativeUsageChart } from './CumulativeUsageChart';
 import { SessionUsage } from './SessionUsage';
 import { TranscriptBytesChart } from './TranscriptBytesChart';
 import { UsageChart } from './UsageChart';
+import { RepeatedCaptures } from './RepeatedCaptures';
 import { AccessibleTabs } from './AccessibleTabs';
 import type { TimelineTarget } from './timelineNavigation';
 
@@ -30,6 +31,7 @@ export function Measurements({ overview, onInspect, onTimelineTarget }: {
     { id: 'windows', label: 'Context windows', content: <ContextWindows overview={overview} onInspect={onInspect} onNavigate={target => onTimelineTarget(target)} /> },
     { id: 'transcript', label: 'Transcript bytes', content: <TranscriptBytesChart overview={overview} onInspect={onInspect} onNavigate={target => onTimelineTarget(target)} /> },
     { id: 'captured', label: 'Captured bytes', content: <CategoryRanking overview={overview} onInspect={onInspect} /> },
+    { id: 'repeated', label: 'Repeated captures', content: <RepeatedCaptures overview={overview} onInspect={onInspect} onTimelineTarget={onTimelineTarget} /> },
   ];
 
   return <div className="measurements-workspace">

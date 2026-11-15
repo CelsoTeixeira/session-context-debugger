@@ -1,4 +1,5 @@
 export type Family = 'codex' | 'claude' | 'unknown';
+export const MAX_RETAINED_TIMELINE_EVENTS = 40_000;
 export type Origin = 'human-recorded' | 'submitted-author-unknown' | 'harness-injected' | 'unknown';
 export type Basis = 'explicit' | 'inferred' | 'unknown';
 export type Representation = 'primary' | 'diagnostic-snapshot' | 'metadata' | 'unknown';
@@ -651,6 +652,69 @@ export interface TimelineMap {
     firstRef: SourceRef;
     largest?: { bytes: number; ref: SourceRef };
   }>;
+}
+
+export type RepeatedCaptureRepresentationFilter = 'all' | TimelineEvent['representation'];
+export interface RepeatedCaptureScope {
+  kind: 'recorded-actor' | 'source-actor' | 'recording-fallback';
+  id?: string;
+}
+export interface RepeatedCaptureGroup {
+  id: string;
+  category: TimelineCategory;
+  representation: TimelineEvent['representation'];
+  kind: EventKind;
+  role?: string;
+  scope: RepeatedCaptureScope;
+  firstLine: number;
+  bytesPerCopy: number;
+  occurrenceCount: number;
+  retainedOccurrences: number;
+  omittedOccurrences: number;
+  retainedEncodedBytes: number;
+}
+export interface RepeatedCaptureOccurrence {
+  ref: SourceRef;
+  target?: { id: string; position: number };
+}
+export interface RepeatedCaptureCoverage {
+  state: Overview['state'];
+  scanComplete: boolean;
+  comparisonComplete: boolean;
+  sourceFamilyUnknown: boolean;
+  scannedRecords: number;
+  indexedRecords: number;
+  unretainedRecords: number;
+  pendingRecords: number;
+  malformedRecords: number;
+  oversizedRecords: number;
+  unknownRecords: number;
+  normalizationLimited: number;
+  timelineCaptureOmissions: number;
+  examinedUniqueFields: number;
+  eligibleFields: number;
+  aliasesExcluded: number;
+  overlapFieldsExcluded: number;
+  unresolvedFields: number;
+  omittedByMetadataLimit: number;
+  candidateMetadata: number;
+  candidateMetadataLimit: number;
+  repeatedGroups: number;
+  retainedOccurrences: number;
+  omittedOccurrences: number;
+}
+export interface RepeatedCaptureGroupsPage {
+  groups: RepeatedCaptureGroup[];
+  after?: number;
+  total: number;
+  coverage: RepeatedCaptureCoverage;
+}
+export interface RepeatedCaptureOccurrencesPage {
+  group: RepeatedCaptureGroup;
+  occurrences: RepeatedCaptureOccurrence[];
+  after?: number;
+  total: number;
+  coverage: RepeatedCaptureCoverage;
 }
 
 export type SourceMode = 't3' | 'claude' | 'codex';

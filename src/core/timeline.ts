@@ -3,9 +3,11 @@ import { timelineCategory, timelineCategoryMatches } from './timeline-category.j
 import { measureCaptures } from './payload-size.js';
 import { claudeResponse, codexResponse, RecordedResponses } from './responses.js';
 import type { Obj } from './json.js';
-import type { EventKind, RecordMeta, ResponseNavigation, SourceFile, SourceRef, TimelineEvent, TimelineFilter, TimelineMap, TimelinePage, TimelineRelationship, TimelineRelationshipBasis, TimelineRelationshipKind, TimelineRelationshipLink } from './types.js';
+import { MAX_RETAINED_TIMELINE_EVENTS } from './types.js';
+import type { EventKind, RecordMeta, RepeatedCaptureScope, ResponseNavigation, SourceFile, SourceRef, TimelineEvent, TimelineFilter, TimelineMap, TimelinePage, TimelineRelationship, TimelineRelationshipBasis, TimelineRelationshipKind, TimelineRelationshipLink } from './types.js';
+import { RepeatedCaptures } from './repeated-captures.js';
 
-const MAX_EVENTS = 40_000;
+const MAX_EVENTS = MAX_RETAINED_TIMELINE_EVENTS;
 const MAX_EVENT_LINKS = 20;
 const PREVIEW = 256;
 const matches = (event: TimelineEvent, filter: TimelineFilter): boolean => timelineCategoryMatches(timelineCategory(event), filter);
@@ -37,6 +39,7 @@ export class Timeline {
   private readonly claudeRecords = new Map<string, ClaudeRecordEvents>();
   omitted = 0;
   readonly responses: RecordedResponses;
+  readonly repeatedCaptures = new RepeatedCaptures();
   constructor(readonly source: SourceFile) { this.responses = new RecordedResponses(source); }
   allows(id: string, pointer: string): boolean { return this.fields.has(id + ':' + pointer); }
   capture(record: Obj | undefined, meta: RecordMeta): void {
@@ -47,7 +50,10 @@ export class Timeline {
       return;
     }
     const start = this.events.length;
-    const actorId = identifier(record?.agentId) ?? identifier(record?.sessionId) ?? this.source.actorId ?? this.source.id;
+    const recordedActorId = identifier(record?.agentId) ?? identifier(record?.sessionId);
+    const actorId = recordedActorId ?? this.source.actorId ?? this.source.id;
+    const actorScope: RepeatedCaptureScope = recordedActorId ? { kind: 'recorded-actor', id: recordedActorId }
+      : this.source.actorId ? { kind: 'source-actor', id: this.source.actorId } : { kind: 'recording-fallback' };
     const timestamp = identifier(record?.timestamp);
     const response = record && this.source.family === 'claude' ? claudeResponse(this.source, record)
       : this.source.family === 'codex' && record?.type === 'token_usage_record' ? codexResponse(this.source, object(record.payload)) : undefined;
@@ -217,7 +223,8 @@ export class Timeline {
           detail: meta.reason ?? 'Physical record retained with disposition: ' + meta.disposition + '. Inspect raw source for its full content.',
         });
     }
-    measureCaptures(record, this.events.slice(start));
+    const measurements = measureCaptures(record, this.events.slice(start));
+    this.repeatedCaptures.capture(measurements, actorScope);
   }
   private capturedAssistantRecord(record: Obj | undefined, pointer: string | undefined, event: TimelineEvent): boolean {
     if (!record || event.representation !== 'primary') return false;

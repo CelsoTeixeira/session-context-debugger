@@ -97,7 +97,7 @@ export async function createApp(roots?: string[]) {
           const body = await readBody(req);
           return send(res, 202, { ok: true, data: await relationships.returnTo(sessions, string(body.token) ?? '', controller.signal) });
         }
-        const match = /^\/api\/sessions\/([0-9a-f-]+)\/(overview|events|response|usage|usage-chart|context-windows|transcript-bytes|ledger|cancel|relationships\/(?:resolve|open|evidence)|search(?:\/cancel)?|records(?:\/r\d+)?)$/.exec(url.pathname);
+        const match = /^\/api\/sessions\/([0-9a-f-]+)\/(overview|events|response|usage|usage-chart|context-windows|transcript-bytes|repeated-captures(?:\/occurrences)?|ledger|cancel|relationships\/(?:resolve|open|evidence)|search(?:\/cancel)?|records(?:\/r\d+)?)$/.exec(url.pathname);
         if (!match || !uuid.test(match[1] ?? '')) throw new DataError('not-found', 'API route unavailable.', 404);
         const session = sessions.get(match[1]!);
         const route = match[2]!;
@@ -141,6 +141,24 @@ export async function createApp(roots?: string[]) {
         if (route === 'transcript-bytes' && req.method === 'GET') {
           const after = Number(url.searchParams.get('after') ?? 0);
           return send(res, 200, { ok: true, data: session.transcriptBytes(after) });
+        }
+        if (route === 'repeated-captures' && req.method === 'GET') {
+          const afterParam = url.searchParams.get('after');
+          if (afterParam !== null && !/^(0|[1-9]\d*)$/.test(afterParam)) {
+            throw new DataError('invalid-cursor', 'Invalid repeated-capture group cursor.');
+          }
+          const after = afterParam === null ? 0 : Number(afterParam);
+          return send(res, 200, { ok: true, data: session.repeatedCaptureGroups(after,
+            url.searchParams.get('representation'), url.searchParams.get('category')) });
+        }
+        if (route === 'repeated-captures/occurrences' && req.method === 'GET') {
+          const afterParam = url.searchParams.get('after');
+          if (afterParam !== null && !/^(0|[1-9]\d*)$/.test(afterParam)) {
+            throw new DataError('invalid-cursor', 'Invalid repeated-capture occurrence cursor.');
+          }
+          const after = afterParam === null ? 0 : Number(afterParam);
+          return send(res, 200, { ok: true, data: session.repeatedCaptureOccurrences(
+            url.searchParams.get('groupId') ?? '', after) });
         }
         if (route === 'events' && req.method === 'GET') {
           const after = Number(url.searchParams.get('after') ?? 0);
